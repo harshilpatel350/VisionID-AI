@@ -1,0 +1,26 @@
+{
+  "app_name": "VisionID AI",
+  "environment": "local",
+  "api_prefix": "/api",
+  "host": "0.0.0.0",
+  "port": 8001,
+  "secret_key": "visionid-ai-local-secret-key-change-me",
+  "access_token_expire_minutes": 1440,
+  "database_url": "mysql+pymysql://root:root@127.0.0.1:3306/visionid_ai?charset=utf8mb4",
+  "cors_origins": [
+    "*"
+  ],
+  "auto_create_tables": true,
+  "use_redis_cache": false,
+  "redis_url": "redis://127.0.0.1:6379/0",
+  "upload_dir": "storage/uploads",
+  "face_dir": "storage/faces",
+  "report_dir": "storage/reports",
+  "log_dir": "storage/logs",
+  "recognition_cooldown_seconds": 30,
+  "recognition_threshold": 0.35,
+  "duplicate_similarity_threshold": 0.92,
+  "quality_min_score": 0.10,
+  "frame_skip": 3,
+  "max_batch_frames": 25
+}
