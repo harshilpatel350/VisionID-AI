@@ -39,12 +39,29 @@ class FacePipeline:
         self._meta: list[dict[str, Any]] = []
 
     def set_registry(self, embeddings: list[dict[str, Any]]) -> None:
-        self._meta = embeddings
         if not embeddings:
+            self._meta = []
             self.index = None
             self._vectors = None
             return
-        vectors = np.asarray([e["vector"] for e in embeddings], dtype=np.float32)
+            
+        # Ensure all vectors have the same dimension as the first one
+        first_dim = len(embeddings[0]["vector"])
+        valid_embeddings = []
+        for e in embeddings:
+            if len(e["vector"]) == first_dim:
+                valid_embeddings.append(e)
+            else:
+                # Log or skip incompatible dimension
+                pass
+        
+        self._meta = valid_embeddings
+        if not valid_embeddings:
+            self.index = None
+            self._vectors = None
+            return
+
+        vectors = np.asarray([e["vector"] for e in valid_embeddings], dtype=np.float32)
         vectors = self._normalize(vectors)
         self._vectors = vectors
         dim = vectors.shape[1]
@@ -80,22 +97,29 @@ class FacePipeline:
             if self.index is not None and self._meta:
                 vec = emb_res.embedding.astype(np.float32).reshape(1, -1)
                 vec = self._normalize(vec)
-                scores, idxs = self.index.search(vec, k=min(5, len(self._meta)))
-                best_score = float(scores[0][0]) if scores.size else 0.0
-                best_idx = int(idxs[0][0]) if idxs.size else -1
-                distance = float(1.0 - best_score)
-                threshold = self.settings.recognition_threshold
-                confidence = max(0.0, min(1.0, best_score))
-                if best_idx >= 0 and best_score >= threshold:
-                    item = self._meta[best_idx]
-                    person_id = int(item["person_id"])
-                    person_code = str(item["person_code"])
-                    name = str(item["full_name"])
-                    is_unknown = False
-                    department = item.get("department")
-                    title = item.get("title")
-                    email = item.get("email")
-                    phone = item.get("phone")
+                
+                # Verify dimension matches the index to avoid faiss AssertionError
+                if vec.shape[1] == self.index.d:
+                    scores, idxs = self.index.search(vec, k=min(5, len(self._meta)))
+                    best_score = float(scores[0][0]) if scores.size else 0.0
+                    best_idx = int(idxs[0][0]) if idxs.size else -1
+                    distance = float(1.0 - best_score)
+                    threshold = self.settings.recognition_threshold
+                    confidence = max(0.0, min(1.0, best_score))
+                    if best_idx >= 0 and best_score >= threshold:
+                        item = self._meta[best_idx]
+                        person_id = int(item["person_id"])
+                        person_code = str(item["person_code"])
+                        name = str(item["full_name"])
+                        is_unknown = False
+                        department = item.get("department")
+                        title = item.get("title")
+                        email = item.get("email")
+                        phone = item.get("phone")
+                else:
+                    # Dimension mismatch - log or handle quietly
+                    # We treat it as Unknown since we can't compare
+                    pass
 
             results.append(
                 RecognitionMatch(

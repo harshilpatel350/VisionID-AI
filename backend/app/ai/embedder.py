@@ -21,7 +21,9 @@ class FaceEmbedder:
 
     def _fallback_embedding(self, face_bgr: np.ndarray) -> np.ndarray:
         gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-        resized = cv2.resize(gray, (32, 32), interpolation=cv2.INTER_AREA)
+        # Use 16x32 to get 512 dimensions, matching insightface_buffalo_l dimension
+        # and existing seeded data in the database.
+        resized = cv2.resize(gray, (16, 32), interpolation=cv2.INTER_AREA)
         vec = resized.astype(np.float32).reshape(-1)
         vec = (vec - vec.mean()) / (vec.std() + 1e-6)
         vec = vec / (np.linalg.norm(vec) + 1e-6)
