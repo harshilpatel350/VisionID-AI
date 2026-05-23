@@ -109,8 +109,8 @@ class FacePipeline:
                         # Dynamic threshold based on model
                         threshold = self.settings.recognition_threshold
                         if self.embedder.model_name == "opencv_histogram":
-                            # Fallback model needs much higher threshold to prevent collisions
-                            threshold = max(threshold, 0.75)
+                            # Spatial LBP needs high threshold
+                            threshold = max(threshold, 0.88)
                             
                         confidence = max(0.0, min(1.0, best_score))
                         if best_idx >= 0 and best_score >= threshold:

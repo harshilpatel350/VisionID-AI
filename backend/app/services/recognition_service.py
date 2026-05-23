@@ -22,7 +22,7 @@ class RecognitionService:
         self.cooldowns: dict[str, float] = {}
         self._index_built = False
         self._smoothing_cache: dict[str, list[int | None]] = {} # session_id -> list of person_ids
-        self._smoothing_window = 5
+        self._smoothing_window = 10
 
     def _get_smoothed_match(self, session_id: str, current_person_id: int | None) -> int | None:
         if session_id not in self._smoothing_cache:
@@ -36,9 +36,9 @@ class RecognitionService:
         # Majority voting
         from collections import Counter
         counts = Counter(cache)
-        # Only return a person_id if it's the clear winner (at least 3/5 frames)
+        # Require a clear majority (e.g., 6/10) to confirm identity
         top_id, count = counts.most_common(1)[0]
-        if count >= 3:
+        if count >= 6:
             return top_id
         return None # Fallback to Unknown if no clear winner
 

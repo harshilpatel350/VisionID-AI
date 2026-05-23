@@ -64,8 +64,9 @@ def _process_frame_sync(payload: str, host: str):
 @router.websocket("/ws")
 async def webcam_socket(websocket: WebSocket):
     await websocket.accept()
-    host = websocket.client.host if websocket.client else "ws"
-    print(f"Client connected to Live AI: {host}")
+    import uuid
+    session_id = str(uuid.uuid4())
+    print(f"Client connected to Live AI: {session_id}")
     try:
         while True:
             try:
@@ -73,7 +74,7 @@ async def webcam_socket(websocket: WebSocket):
                 if not payload:
                     continue
                 
-                _annotated, logs, jpeg_b64 = await run_in_threadpool(_process_frame_sync, payload, host)
+                _annotated, logs, jpeg_b64 = await run_in_threadpool(_process_frame_sync, payload, session_id)
                 
                 await websocket.send_json({
                     "type": "frame",
@@ -85,13 +86,13 @@ async def webcam_socket(websocket: WebSocket):
             except Exception as e:
                 import traceback
                 err_str = traceback.format_exc()
-                print(f"Error processing frame for {host}: {e}\n{err_str}")
+                print(f"Error processing frame for {session_id}: {e}\n{err_str}")
                 try:
                     await websocket.send_json({"type": "error", "message": str(e)})
                 except Exception as send_err:
                     print(f"Failed to send error to client: {send_err}")
                     break
     except WebSocketDisconnect:
-        print(f"Client disconnected: {host}")
+        print(f"Client disconnected: {session_id}")
     except Exception as e:
-        print(f"WebSocket session error for {host}: {e}")
+        print(f"WebSocket session error for {session_id}: {e}")

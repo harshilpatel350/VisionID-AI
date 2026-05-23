@@ -18,22 +18,47 @@ class FaceEmbedder:
         self.detector = FaceDetector()
         self.insightface = getattr(self.detector, "insightface", None)
         self.model_name = "insightface_buffalo_l" if self.insightface is not None else "opencv_histogram"
-        self.embedding_dim = 512 # buffalo_l and our fallback both use 512
+        self.embedding_dim = 4096 if self.insightface is None else 512
+
+    def _get_lbp_feature(self, img: np.ndarray) -> np.ndarray:
+        """Simple Local Binary Pattern implementation."""
+        h, w = img.shape
+        # Use faster bitwise operations if possible, but keeping it simple for now
+        lbp = np.zeros((h-2, w-2), dtype=np.uint8)
+        # Optimized LBP calculation using shifts
+        img_f = img.astype(np.float32)
+        lbp |= ((img_f[0:-2, 0:-2] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 7)
+        lbp |= ((img_f[0:-2, 1:-1] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 6)
+        lbp |= ((img_f[0:-2, 2:] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 5)
+        lbp |= ((img_f[1:-1, 2:] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 4)
+        lbp |= ((img_f[2:, 2:] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 3)
+        lbp |= ((img_f[2:, 1:-1] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 2)
+        lbp |= ((img_f[2:, 0:-2] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 1)
+        lbp |= ((img_f[1:-1, 0:-2] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 0)
+        
+        hist, _ = np.histogram(lbp, bins=256, range=(0, 256))
+        hist = hist.astype(np.float32)
+        hist /= (hist.sum() + 1e-6)
+        return hist
 
     def _fallback_embedding(self, face_bgr: np.ndarray) -> np.ndarray:
-        # Improved fallback: Histogram Equalization + Gaussian Blur + Normalized Grayscale
+        # Spatial LBP: 4x4 grid for better discriminability
         gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
         gray = cv2.equalizeHist(gray)
-        # Add slight blur to reduce noise sensitivity
-        gray = cv2.GaussianBlur(gray, (3, 3), 0)
+        gray = cv2.resize(gray, (128, 128))
         
-        # Use 16x32 to get 512 dimensions
-        resized = cv2.resize(gray, (16, 32), interpolation=cv2.INTER_AREA)
-        vec = resized.astype(np.float32).reshape(-1)
+        grid_size = 4
+        h, w = gray.shape
+        gh, gw = h // grid_size, w // grid_size
         
-        # Zero-mean and Unit-variance normalization
-        vec = (vec - vec.mean()) / (vec.std() + 1e-6)
-        # Unit length normalization for cosine similarity
+        features = []
+        for i in range(grid_size):
+            for j in range(grid_size):
+                cell = gray[i*gh : (i+1)*gh, j*gw : (j+1)*gw]
+                features.append(self._get_lbp_feature(cell))
+        
+        vec = np.concatenate(features)
+        # Unit length normalization
         vec = vec / (np.linalg.norm(vec) + 1e-6)
         return vec.astype(np.float32)
 
