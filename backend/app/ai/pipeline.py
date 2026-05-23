@@ -99,26 +99,28 @@ class FacePipeline:
                 vec = self._normalize(vec)
                 
                 # Verify dimension matches the index to avoid faiss AssertionError
-                if vec.shape[1] == self.index.d:
-                    scores, idxs = self.index.search(vec, k=min(5, len(self._meta)))
-                    best_score = float(scores[0][0]) if scores.size else 0.0
-                    best_idx = int(idxs[0][0]) if idxs.size else -1
-                    distance = float(1.0 - best_score)
-                    threshold = self.settings.recognition_threshold
-                    confidence = max(0.0, min(1.0, best_score))
-                    if best_idx >= 0 and best_score >= threshold:
-                        item = self._meta[best_idx]
-                        person_id = int(item["person_id"])
-                        person_code = str(item["person_code"])
-                        name = str(item["full_name"])
-                        is_unknown = False
-                        department = item.get("department")
-                        title = item.get("title")
-                        email = item.get("email")
-                        phone = item.get("phone")
+                if self.index.ntotal > 0 and vec.shape[1] == self.index.d:
+                    try:
+                        scores, idxs = self.index.search(vec, k=min(5, len(self._meta)))
+                        best_score = float(scores[0][0]) if scores.size else 0.0
+                        best_idx = int(idxs[0][0]) if idxs.size else -1
+                        distance = float(1.0 - best_score)
+                        threshold = self.settings.recognition_threshold
+                        confidence = max(0.0, min(1.0, best_score))
+                        if best_idx >= 0 and best_score >= threshold:
+                            item = self._meta[best_idx]
+                            person_id = int(item["person_id"])
+                            person_code = str(item["person_code"])
+                            name = str(item["full_name"])
+                            is_unknown = False
+                            department = item.get("department")
+                            title = item.get("title")
+                            email = item.get("email")
+                            phone = item.get("phone")
+                    except Exception as e:
+                        print(f"Error searching index: {e}")
                 else:
-                    # Dimension mismatch - log or handle quietly
-                    # We treat it as Unknown since we can't compare
+                    # Dimension mismatch or empty index - handle quietly
                     pass
 
             results.append(

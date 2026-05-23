@@ -18,6 +18,7 @@ class FaceEmbedder:
         self.detector = FaceDetector()
         self.insightface = getattr(self.detector, "insightface", None)
         self.model_name = "insightface_buffalo_l" if self.insightface is not None else "opencv_histogram"
+        self.embedding_dim = 512 # buffalo_l and our fallback both use 512
 
     def _fallback_embedding(self, face_bgr: np.ndarray) -> np.ndarray:
         gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)

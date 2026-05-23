@@ -65,26 +65,33 @@ def _process_frame_sync(payload: str, host: str):
 async def webcam_socket(websocket: WebSocket):
     await websocket.accept()
     host = websocket.client.host if websocket.client else "ws"
+    print(f"Client connected to Live AI: {host}")
     try:
         while True:
-            payload = await websocket.receive_text()
             try:
-                # print(f"Received payload length: {len(payload)}")
+                payload = await websocket.receive_text()
+                if not payload:
+                    continue
+                
                 _annotated, logs, jpeg_b64 = await run_in_threadpool(_process_frame_sync, payload, host)
-                # print(f"Sending response with {len(logs)} logs")
+                
                 await websocket.send_json({
                     "type": "frame",
                     "image": jpeg_b64,
                     "logs": [m.__dict__ for m in logs],
                 })
+            except WebSocketDisconnect:
+                raise
             except Exception as e:
                 import traceback
                 err_str = traceback.format_exc()
-                print(f"Error processing frame: {e}\n{err_str}")
-                # Don't break, keep the connection alive
+                print(f"Error processing frame for {host}: {e}\n{err_str}")
                 try:
                     await websocket.send_json({"type": "error", "message": str(e)})
-                except:
-                    pass
+                except Exception as send_err:
+                    print(f"Failed to send error to client: {send_err}")
+                    break
     except WebSocketDisconnect:
-        print("Client disconnected.")
+        print(f"Client disconnected: {host}")
+    except Exception as e:
+        print(f"WebSocket session error for {host}: {e}")
