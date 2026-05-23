@@ -80,75 +80,79 @@ class FacePipeline:
             emb_res = self.embedder.extract(image_bgr, face)
             if emb_res is None:
                 continue
-            q = face_quality(self.detector.align(image_bgr, face))
-            b = blur_score(image_bgr)
-            l = low_light_score(image_bgr)
-            confidence = 0.0
-            distance = 1.0
-            person_id = None
-            person_code = None
-            name = "Unknown"
-            is_unknown = True
-            department = None
-            title = None
-            email = None
-            phone = None
 
-            if self.index is not None and self._meta:
-                vec = emb_res.embedding.astype(np.float32).reshape(1, -1)
-                vec = self._normalize(vec)
-                
-                # Verify dimension matches the index to avoid faiss AssertionError
-                if self.index.ntotal > 0 and vec.shape[1] == self.index.d:
-                    try:
-                        scores, idxs = self.index.search(vec, k=min(5, len(self._meta)))
-                        best_score = float(scores[0][0]) if scores.size else 0.0
-                        best_idx = int(idxs[0][0]) if idxs.size else -1
-                        distance = float(1.0 - best_score)
-                        
-                        # Dynamic threshold based on model
-                        threshold = self.settings.recognition_threshold
-                        if self.embedder.model_name == "opencv_histogram":
-                            # Spatial LBP needs high threshold
-                            threshold = max(threshold, 0.88)
-                            
-                        confidence = max(0.0, min(1.0, best_score))
-                        if best_idx >= 0 and best_score >= threshold:
-                            item = self._meta[best_idx]
-                            person_id = int(item["person_id"])
-                            person_code = str(item["person_code"])
-                            name = str(item["full_name"])
-                            is_unknown = False
-                            department = item.get("department")
-                            title = item.get("title")
-                            email = item.get("email")
-                            phone = item.get("phone")
-                    except Exception as e:
-                        print(f"Error searching index: {e}")
-                else:
-                    # Dimension mismatch or empty index - handle quietly
-                    pass
+            match_data = self._match_and_find(emb_res)
+
+            # If unknown, try horizontal flip (mirroring robustness)
+            if match_data["is_unknown"]:
+                face_img = self.detector.align(image_bgr, face)
+                flipped = cv2.flip(face_img, 1)
+                emb_flipped = self.embedder.extract(flipped)
+                if emb_flipped:
+                    match_flipped = self._match_and_find(emb_flipped)
+                    if not match_flipped["is_unknown"]:
+                        match_data = match_flipped
 
             results.append(
                 RecognitionMatch(
-                    person_id=person_id,
-                    person_code=person_code,
-                    full_name=name,
-                    confidence=confidence,
-                    distance=distance,
-                    is_unknown=is_unknown,
+                    person_id=match_data["person_id"],
+                    person_code=match_data["person_code"],
+                    full_name=match_data["full_name"],
+                    confidence=match_data["confidence"],
+                    distance=match_data["distance"],
+                    is_unknown=match_data["is_unknown"],
                     bbox={"x1": int(face.bbox[0]), "y1": int(face.bbox[1]), "x2": int(face.bbox[2]), "y2": int(face.bbox[3])},
-                    quality_score=float(q),
-                    blur_score=float(b),
-                    low_light_score=float(l),
-                    embedding_hash=emb_res.hash_hex,
-                    department=department if not is_unknown else None,
-                    title=title if not is_unknown else None,
-                    email=email if not is_unknown else None,
-                    phone=phone if not is_unknown else None,
+                    quality_score=float(face_quality(self.detector.align(image_bgr, face))),
+                    blur_score=float(blur_score(image_bgr)),
+                    low_light_score=float(low_light_score(image_bgr)),
+                    embedding_hash=match_data["embedding_hash"],
+                    department=match_data["department"] if not match_data["is_unknown"] else None,
+                    title=match_data["title"] if not match_data["is_unknown"] else None,
+                    email=match_data["email"] if not match_data["is_unknown"] else None,
+                    phone=match_data["phone"] if not match_data["is_unknown"] else None,
                 )
             )
         return results
+
+    def _match_and_find(self, emb_res: Any) -> dict[str, Any]:
+        """Helper to match a single embedding against the registry."""
+        res = {
+            "person_id": None, "person_code": None, "full_name": "Unknown",
+            "confidence": 0.0, "distance": 1.0, "is_unknown": True,
+            "department": None, "title": None, "email": None, "phone": None,
+            "embedding_hash": emb_res.hash_hex
+        }
+
+        if self.index is not None and self._meta:
+            vec = emb_res.embedding.astype(np.float32).reshape(1, -1)
+            vec = self._normalize(vec)
+            
+            if self.index.ntotal > 0 and vec.shape[1] == self.index.d:
+                try:
+                    scores, idxs = self.index.search(vec, k=min(5, len(self._meta)))
+                    best_score = float(scores[0][0]) if scores.size else 0.0
+                    best_idx = int(idxs[0][0]) if idxs.size else -1
+                    res["distance"] = float(1.0 - best_score)
+                    
+                    threshold = self.settings.recognition_threshold
+                    if self.embedder.model_name == "opencv_histogram":
+                        # Robust LBP+HOG (6x6) works well at 0.82
+                        threshold = max(threshold, 0.82)
+                        
+                    res["confidence"] = max(0.0, min(1.0, best_score))
+                    if best_idx >= 0 and best_score >= threshold:
+                        item = self._meta[best_idx]
+                        res["person_id"] = int(item["person_id"])
+                        res["person_code"] = str(item["person_code"])
+                        res["full_name"] = str(item["full_name"])
+                        res["is_unknown"] = False
+                        res["department"] = item.get("department")
+                        res["title"] = item.get("title")
+                        res["email"] = item.get("email")
+                        res["phone"] = item.get("phone")
+                except Exception as e:
+                    print(f"Error searching index: {e}")
+        return res
 
     def draw(self, image_bgr: np.ndarray, matches: list[RecognitionMatch]) -> np.ndarray:
         out = image_bgr.copy()

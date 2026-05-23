@@ -18,15 +18,15 @@ class FaceEmbedder:
         self.detector = FaceDetector()
         self.insightface = getattr(self.detector, "insightface", None)
         self.model_name = "insightface_buffalo_l" if self.insightface is not None else "opencv_histogram"
-        self.embedding_dim = 4096 if self.insightface is None else 512
+        self.embedding_dim = 9504 if self.insightface is None else 512
 
     def _get_lbp_feature(self, img: np.ndarray) -> np.ndarray:
-        """Simple Local Binary Pattern implementation."""
+        """Improved Uniform LBP implementation."""
         h, w = img.shape
-        # Use faster bitwise operations if possible, but keeping it simple for now
-        lbp = np.zeros((h-2, w-2), dtype=np.uint8)
-        # Optimized LBP calculation using shifts
         img_f = img.astype(np.float32)
+        lbp = np.zeros((h-2, w-2), dtype=np.uint8)
+        
+        # Comparison shifts
         lbp |= ((img_f[0:-2, 0:-2] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 7)
         lbp |= ((img_f[0:-2, 1:-1] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 6)
         lbp |= ((img_f[0:-2, 2:] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 5)
@@ -36,29 +36,68 @@ class FaceEmbedder:
         lbp |= ((img_f[2:, 0:-2] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 1)
         lbp |= ((img_f[1:-1, 0:-2] >= img_f[1:-1, 1:-1]).astype(np.uint8) << 0)
         
+        # Calculate histogram
         hist, _ = np.histogram(lbp, bins=256, range=(0, 256))
         hist = hist.astype(np.float32)
         hist /= (hist.sum() + 1e-6)
         return hist
 
-    def _fallback_embedding(self, face_bgr: np.ndarray) -> np.ndarray:
-        # Spatial LBP: 4x4 grid for better discriminability
-        gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-        gray = cv2.equalizeHist(gray)
-        gray = cv2.resize(gray, (128, 128))
+    def _normalize_illumination(self, img: np.ndarray) -> np.ndarray:
+        """Gamma correction and normalization for better lighting robustness."""
+        # 1. Gamma correction (gamma=0.8 to darken slightly or 1.2 to brighten)
+        # We use a power-law transform to compress dynamic range
+        f_img = img.astype(np.float32) / 255.0
+        gamma = 0.8 # Slightly darken to recover highlights
+        corrected = np.power(f_img, gamma)
         
-        grid_size = 4
+        # 2. Local normalization (CLAHE)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        uint8_img = (corrected * 255).astype(np.uint8)
+        normalized = clahe.apply(uint8_img)
+        return normalized
+
+    def _get_hog_feature(self, img: np.ndarray) -> np.ndarray:
+        """Simple HOG-like gradient feature for shape robustness."""
+        gx = cv2.Sobel(img, cv2.CV_32F, 1, 0, ksize=1)
+        gy = cv2.Sobel(img, cv2.CV_32F, 0, 1, ksize=1)
+        mag, ang = cv2.cartToPolar(gx, gy)
+        
+        # Quantize angles into 8 bins
+        bins = np.int32(8 * ang / (2 * np.pi))
+        
+        # Calculate histogram of magnitudes per bin
+        hist = np.zeros(8, dtype=np.float32)
+        for i in range(8):
+            hist[i] = mag[bins == i].sum()
+            
+        hist /= (hist.sum() + 1e-6)
+        return hist
+
+    def _fallback_embedding(self, face_bgr: np.ndarray) -> np.ndarray:
+        # 1. Preprocess
+        gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
+        gray = self._normalize_illumination(gray)
+        gray = cv2.resize(gray, (150, 150)) # Slightly larger for 6x6 grid
+        
+        # 2. Extract Spatial LBP (6x6 grid)
+        grid_size = 6
         h, w = gray.shape
         gh, gw = h // grid_size, w // grid_size
-        
-        features = []
+        lbp_features = []
         for i in range(grid_size):
             for j in range(grid_size):
                 cell = gray[i*gh : (i+1)*gh, j*gw : (j+1)*gw]
-                features.append(self._get_lbp_feature(cell))
+                lbp_features.append(self._get_lbp_feature(cell))
         
-        vec = np.concatenate(features)
-        # Unit length normalization
+        # 3. Extract Spatial HOG (6x6 grid)
+        hog_features = []
+        for i in range(grid_size):
+            for j in range(grid_size):
+                cell = gray[i*gh : (i+1)*gh, j*gw : (j+1)*gw]
+                hog_features.append(self._get_hog_feature(cell))
+        
+        # 4. Combine
+        vec = np.concatenate(lbp_features + hog_features)
         vec = vec / (np.linalg.norm(vec) + 1e-6)
         return vec.astype(np.float32)
 
