@@ -21,9 +21,11 @@ class FaceEmbedder:
         self.embedding_dim = 512 # buffalo_l and our fallback both use 512
 
     def _fallback_embedding(self, face_bgr: np.ndarray) -> np.ndarray:
-        # Improved fallback: Histogram Equalization + Normalized Grayscale
+        # Improved fallback: Histogram Equalization + Gaussian Blur + Normalized Grayscale
         gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
         gray = cv2.equalizeHist(gray)
+        # Add slight blur to reduce noise sensitivity
+        gray = cv2.GaussianBlur(gray, (3, 3), 0)
         
         # Use 16x32 to get 512 dimensions
         resized = cv2.resize(gray, (16, 32), interpolation=cv2.INTER_AREA)

@@ -21,6 +21,26 @@ class RecognitionService:
         self.settings = load_settings()
         self.cooldowns: dict[str, float] = {}
         self._index_built = False
+        self._smoothing_cache: dict[str, list[int | None]] = {} # session_id -> list of person_ids
+        self._smoothing_window = 5
+
+    def _get_smoothed_match(self, session_id: str, current_person_id: int | None) -> int | None:
+        if session_id not in self._smoothing_cache:
+            self._smoothing_cache[session_id] = []
+        
+        cache = self._smoothing_cache[session_id]
+        cache.append(current_person_id)
+        if len(cache) > self._smoothing_window:
+            cache.pop(0)
+            
+        # Majority voting
+        from collections import Counter
+        counts = Counter(cache)
+        # Only return a person_id if it's the clear winner (at least 3/5 frames)
+        top_id, count = counts.most_common(1)[0]
+        if count >= 3:
+            return top_id
+        return None # Fallback to Unknown if no clear winner
 
     def _cooldown_key(self, session_id: str, person_id: int | None, is_unknown: bool) -> str:
         return f"{session_id}:{'unknown' if is_unknown else person_id}"
@@ -81,6 +101,36 @@ class RecognitionService:
         frame = self.face_service._load_image(raw)
         self._ensure_index(db)
         matches = self.face_service.pipeline.analyze_face(frame)
+        
+        # Apply smoothing to the primary match (assuming single face for now for simplicity, 
+        # or we could use a more complex tracker for multiple faces).
+        # For simplicity, we smooth based on the session_id and the best match found.
+        if matches:
+            # We sort by confidence to get the best one
+            matches.sort(key=lambda x: x.confidence, reverse=True)
+            best_match = matches[0]
+            
+            smoothed_id = self._get_smoothed_match(session_id, best_match.person_id if not best_match.is_unknown else None)
+            
+            # If smoothing says this should be someone else or unknown
+            if smoothed_id is None and not best_match.is_unknown:
+                # Downgrade to unknown if not enough consensus
+                best_match.is_unknown = True
+                best_match.full_name = "Unknown"
+                best_match.person_id = None
+                best_match.person_code = None
+            elif smoothed_id is not None and (best_match.is_unknown or best_match.person_id != smoothed_id):
+                # Upgrade to known if consensus exists
+                # We need to fetch the person info from registry
+                for item in self.face_service.pipeline._meta:
+                    if item["person_id"] == smoothed_id:
+                        best_match.person_id = item["person_id"]
+                        best_match.person_code = item["person_code"]
+                        best_match.full_name = item["full_name"]
+                        best_match.is_unknown = False
+                        best_match.confidence = max(best_match.confidence, 0.5) # boost confidence slightly
+                        break
+
         # Skip encoding annotated image — frontend draws boxes via overlay canvas
         for m in matches:
             if not self._allow_log(session_id, m.person_id, m.is_unknown):

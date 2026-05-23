@@ -285,44 +285,50 @@ export function WebcamModal() {
               </div>
             )}
           </div>
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+          <div className="space-y-4 flex flex-col h-full">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300 h-[72px] shrink-0 overflow-hidden">
               <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Status</div>
-              <span className="text-white">{status}</span>
+              <span className="text-white line-clamp-1">{status}</span>
             </div>
 
-            {/* Recognition results */}
-            {logs.length > 0 && (
-              <div className="max-h-96 overflow-y-auto rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Detections</div>
-                {logs.map((log, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex flex-col gap-1 rounded-xl px-3 py-2 text-sm ${
-                      log.is_unknown
-                        ? "border border-orange-500/20 bg-orange-500/10 text-orange-200"
-                        : "border border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{log.full_name}</span>
-                      <span className="text-xs opacity-75">{(log.confidence * 100).toFixed(1)}%</span>
-                    </div>
-                    {!log.is_unknown && (
-                      <div className="mt-1 flex flex-col gap-0.5 text-xs opacity-80">
-                        {log.person_code && <div><span className="font-semibold">ID:</span> {log.person_code}</div>}
-                        {log.title && <div><span className="font-semibold">Title:</span> {log.title}</div>}
-                        {log.department && <div><span className="font-semibold">Dept:</span> {log.department}</div>}
-                        {log.email && <div><span className="font-semibold">Email:</span> {log.email}</div>}
-                        {log.phone && <div><span className="font-semibold">Phone:</span> {log.phone}</div>}
+            {/* Recognition results - fixed height or flexible but contained */}
+            <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Detections</div>
+              {logs.length > 0 ? (
+                <div className="space-y-2">
+                  {logs.map((log, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex flex-col gap-1 rounded-xl px-3 py-2 text-sm ${
+                        log.is_unknown
+                          ? "border border-orange-500/20 bg-orange-500/10 text-orange-200"
+                          : "border border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{log.full_name}</span>
+                        <span className="text-xs opacity-75">{(log.confidence * 100).toFixed(1)}%</span>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                      {!log.is_unknown && (
+                        <div className="mt-1 flex flex-col gap-0.5 text-xs opacity-80">
+                          {log.person_code && <div><span className="font-semibold">ID:</span> {log.person_code}</div>}
+                          {log.title && <div><span className="font-semibold">Title:</span> {log.title}</div>}
+                          {log.department && <div><span className="font-semibold">Dept:</span> {log.department}</div>}
+                          {log.email && <div><span className="font-semibold">Email:</span> {log.email}</div>}
+                          {log.phone && <div><span className="font-semibold">Phone:</span> {log.phone}</div>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center text-slate-500 text-xs italic">
+                  No faces detected
+                </div>
+              )}
+            </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 mt-auto shrink-0">
               {!isCameraOn ? (
                 <Button className="w-full" onClick={turnOnCamera}>Turn On Camera</Button>
               ) : (
