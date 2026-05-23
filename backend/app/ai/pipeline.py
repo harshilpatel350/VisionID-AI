@@ -105,7 +105,13 @@ class FacePipeline:
                         best_score = float(scores[0][0]) if scores.size else 0.0
                         best_idx = int(idxs[0][0]) if idxs.size else -1
                         distance = float(1.0 - best_score)
+                        
+                        # Dynamic threshold based on model
                         threshold = self.settings.recognition_threshold
+                        if self.embedder.model_name == "opencv_histogram":
+                            # Fallback model needs much higher threshold to prevent collisions
+                            threshold = max(threshold, 0.75)
+                            
                         confidence = max(0.0, min(1.0, best_score))
                         if best_idx >= 0 and best_score >= threshold:
                             item = self._meta[best_idx]

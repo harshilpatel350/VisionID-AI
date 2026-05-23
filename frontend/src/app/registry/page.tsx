@@ -111,6 +111,15 @@ export default function RegistryPage() {
     }
   };
 
+  const deletePerson = async (id: number) => {
+    try {
+      await api.delete(`/faces/persons/${id}`);
+      persons.refetch();
+    } catch (err: any) {
+      alert("Failed to delete: " + (err.response?.data?.detail || err.message));
+    }
+  };
+
   return (
     <AppShell>
       <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
@@ -169,7 +178,9 @@ export default function RegistryPage() {
         <Card>
           <CardTitle>Face Registry</CardTitle>
           <CardContent className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-2">
-            {(persons.data ?? []).map((person: any) => <FaceCard key={person.id} person={person} />)}
+            {(persons.data ?? []).map((person: any) => (
+              <FaceCard key={person.id} person={person} onDelete={deletePerson} />
+            ))}
           </CardContent>
         </Card>
       </div>

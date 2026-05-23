@@ -35,10 +35,18 @@ class RecognitionService:
         return True
 
     def _ensure_index(self, db: Session) -> None:
-        """Build FAISS index once, not every frame."""
-        if not self._index_built:
+        """Build FAISS index if not built or if count changed."""
+        from sqlalchemy import func
+        from app.models.face import FaceEmbedding, Person
+        
+        # We only care about embeddings matching the current model
+        current_model = self.face_service.embedder.model_name
+        count = db.query(FaceEmbedding).join(Person).filter(Person.embedding_model == current_model).count()
+        
+        if not self._index_built or getattr(self, "_last_count", -1) != count:
             self.face_service.rebuild_index(db)
             self._index_built = True
+            self._last_count = count
 
     def invalidate_index(self) -> None:
         """Call when persons/embeddings change to force a rebuild."""

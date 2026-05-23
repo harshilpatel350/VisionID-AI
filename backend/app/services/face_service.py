@@ -148,9 +148,10 @@ class FaceService:
 
     def rebuild_index(self, db: Session) -> None:
         embeddings = []
+        current_model = self.embedder.model_name
         for emb in db.scalars(select(FaceEmbedding)).all():
             person = db.get(Person, emb.person_id)
-            if not person:
+            if not person or person.embedding_model != current_model:
                 continue
             embeddings.append(
                 {

@@ -2,12 +2,14 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Trash2 } from "lucide-react";
 
-export function FaceCard({ person }: { person: any }) {
+export function FaceCard({ person, onDelete }: { person: any, onDelete?: (id: number) => void }) {
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden group">
       <CardContent className="flex items-center gap-4 p-0">
-        <div className="h-20 w-20 rounded-2xl bg-white/5 p-2">
+        <div className="h-20 w-20 rounded-2xl bg-white/5 p-2 shrink-0">
           <div className="grid h-full w-full place-items-center rounded-xl bg-indigo-500/15 text-indigo-200">
             {person.full_name?.charAt(0)}
           </div>
@@ -20,6 +22,22 @@ export function FaceCard({ person }: { person: any }) {
           <div className="mt-1 text-sm text-slate-400">{person.person_code}</div>
           <div className="mt-2 text-xs text-slate-500">{person.sample_count ?? 0} samples • {person.department ?? "No department"}</div>
         </div>
+        {onDelete && (
+          <div className="pr-4 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button 
+              variant="destructive" 
+              size="icon" 
+              className="h-8 w-8 rounded-lg"
+              onClick={() => {
+                if (confirm(`Delete ${person.full_name}?`)) {
+                  onDelete(person.id);
+                }
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

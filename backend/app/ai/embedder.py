@@ -21,12 +21,17 @@ class FaceEmbedder:
         self.embedding_dim = 512 # buffalo_l and our fallback both use 512
 
     def _fallback_embedding(self, face_bgr: np.ndarray) -> np.ndarray:
+        # Improved fallback: Histogram Equalization + Normalized Grayscale
         gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
-        # Use 16x32 to get 512 dimensions, matching insightface_buffalo_l dimension
-        # and existing seeded data in the database.
+        gray = cv2.equalizeHist(gray)
+        
+        # Use 16x32 to get 512 dimensions
         resized = cv2.resize(gray, (16, 32), interpolation=cv2.INTER_AREA)
         vec = resized.astype(np.float32).reshape(-1)
+        
+        # Zero-mean and Unit-variance normalization
         vec = (vec - vec.mean()) / (vec.std() + 1e-6)
+        # Unit length normalization for cosine similarity
         vec = vec / (np.linalg.norm(vec) + 1e-6)
         return vec.astype(np.float32)
 
