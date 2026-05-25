@@ -43,9 +43,10 @@ class RecognitionService:
         # Majority voting
         from collections import Counter
         counts = Counter(cache)
-        # Require a clear majority (e.g., 6/10) to confirm identity
+        # Require a clear majority (e.g., 60% of current buffer) to confirm identity
         top_id, count = counts.most_common(1)[0]
-        if count >= 6:
+        threshold = max(1, int(len(cache) * 0.6))
+        if count >= threshold:
             return top_id
         return None # Fallback to Unknown if no clear winner
 
