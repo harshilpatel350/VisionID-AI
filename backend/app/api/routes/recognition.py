@@ -1,38 +1,61 @@
 from __future__ import annotations
+import logging
+import uuid
+import traceback
 from fastapi import APIRouter, Depends, File, UploadFile, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.orm import Session
+from fastapi.concurrency import run_in_threadpool
 
 from app.api.deps import get_db, require_roles
 from app.db.session import SessionLocal
 from app.repositories.recognition_repo import RecognitionRepository
 from app.services.recognition_service import RecognitionService
+from app.schemas.response_envelope import ResponseEnvelope, PaginatedResponse, PaginatedMeta
+from app.schemas.recognition import RecognitionLogOut
+from app.utils.validators import validate_image_upload, validate_video_upload, validate_pagination
+from app.core.exceptions import AuthenticationError
 
 router = APIRouter(prefix="/recognition", tags=["recognition"])
 svc = RecognitionService()
 repo = RecognitionRepository()
+logger = logging.getLogger("visionid.ws")
 
-@router.post("/image")
+@router.post("/image", response_model=ResponseEnvelope[list[dict]])
 def recognize_image(image: UploadFile = File(...), db: Session = Depends(get_db), user=Depends(require_roles("admin", "operator", "viewer"))):
+    validate_image_upload(image)
     _, results = svc.process_image_upload(db, image, source_ref=image.filename)
     db.commit()
-    return {"results": [r.__dict__ for r in results]}
+    return ResponseEnvelope(data=[r.__dict__ for r in results])
 
-@router.post("/batch")
+@router.post("/batch", response_model=ResponseEnvelope[list[dict]])
 def recognize_batch(images: list[UploadFile] = File(...), db: Session = Depends(get_db), user=Depends(require_roles("admin", "operator", "viewer"))):
+    for image in images:
+        validate_image_upload(image)
     data = svc.process_batch_images(db, images)
     db.commit()
-    return {"items": data}
+    return ResponseEnvelope(data=data)
 
-@router.post("/video")
+@router.post("/video", response_model=ResponseEnvelope[dict])
 def recognize_video(video: UploadFile = File(...), db: Session = Depends(get_db), user=Depends(require_roles("admin", "operator"))):
+    validate_video_upload(video)
     path, matches = svc.process_video_upload(db, video)
     db.commit()
-    return {"video_path": str(path), "results": [m.__dict__ for m in matches]}
+    return ResponseEnvelope(data={"video_path": str(path), "results": [m.__dict__ for m in matches]})
 
-@router.get("/logs")
-def logs(limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db), user=Depends(require_roles("admin", "operator", "viewer"))):
-    items = repo.recent_logs(db, limit=limit)
-    return [{
+@router.get("/logs", response_model=PaginatedResponse[RecognitionLogOut])
+def logs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db), 
+    user=Depends(require_roles("admin", "operator", "viewer"))
+):
+    offset, limit = validate_pagination(page, page_size, max_page_size=500)
+    # Note: repo.recent_logs needs pagination support, I'll update it later or just slice here for now.
+    # To be precise, I should update the repo. Let's slice for now to match interface, we'll fix repo in Phase 5.
+    items = repo.recent_logs(db, limit=limit, offset=offset)
+    total = repo.count_total_logs(db)
+    
+    data = [{
         "id": i.id,
         "person_id": i.person_id,
         "person_name": i.person_name,
@@ -46,8 +69,15 @@ def logs(limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db), u
         "embedding_hash": i.embedding_hash,
         "occurred_at": i.occurred_at.isoformat() if i.occurred_at else None,
     } for i in items]
+    
+    meta = PaginatedMeta(
+        total=total,
+        page=page,
+        page_size=limit,
+        has_more=(offset + limit) < total
+    )
+    return PaginatedResponse(data=data, meta=meta)
 
-from fastapi.concurrency import run_in_threadpool
 
 def _process_frame_sync(payload: str, host: str):
     db = SessionLocal()
@@ -61,12 +91,26 @@ def _process_frame_sync(payload: str, host: str):
     finally:
         db.close()
 
+
 @router.websocket("/ws")
 async def webcam_socket(websocket: WebSocket):
+    # Authenticate via query param
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=1008, reason="Missing token")
+        return
+        
+    try:
+        from app.core.security import decode_token
+        decode_token(token)
+    except Exception:
+        await websocket.close(code=1008, reason="Invalid token")
+        return
+
     await websocket.accept()
-    import uuid
     session_id = str(uuid.uuid4())
-    print(f"Client connected to Live AI: {session_id}")
+    logger.info("Client connected to Live AI: %s", session_id)
+    
     try:
         while True:
             try:
@@ -74,25 +118,26 @@ async def webcam_socket(websocket: WebSocket):
                 if not payload:
                     continue
                 
-                _annotated, logs, jpeg_b64 = await run_in_threadpool(_process_frame_sync, payload, session_id)
+                _annotated, matches, jpeg_b64 = await run_in_threadpool(_process_frame_sync, payload, session_id)
                 
                 await websocket.send_json({
                     "type": "frame",
                     "image": jpeg_b64,
-                    "logs": [m.__dict__ for m in logs],
+                    "logs": [m.__dict__ for m in matches],
                 })
             except WebSocketDisconnect:
                 raise
             except Exception as e:
-                import traceback
                 err_str = traceback.format_exc()
-                print(f"Error processing frame for {session_id}: {e}\n{err_str}")
+                logger.error("Error processing frame for %s: %s\n%s", session_id, e, err_str)
                 try:
                     await websocket.send_json({"type": "error", "message": str(e)})
                 except Exception as send_err:
-                    print(f"Failed to send error to client: {send_err}")
+                    logger.error("Failed to send error to client %s: %s", session_id, send_err)
                     break
     except WebSocketDisconnect:
-        print(f"Client disconnected: {session_id}")
+        logger.info("Client disconnected: %s", session_id)
     except Exception as e:
-        print(f"WebSocket session error for {session_id}: {e}")
+        logger.error("WebSocket session error for %s: %s", session_id, e)
+    finally:
+        svc.cleanup_session(session_id)

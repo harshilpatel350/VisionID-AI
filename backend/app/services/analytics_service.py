@@ -26,9 +26,10 @@ class AnalyticsService:
             print(f"[MONITOR] Current System Accuracy (Recognition Rate): {recognition_rate * 100:.2f}%")
             
         active_users = db.scalar(select(func.count(User.id)).where(User.is_active.is_(True))) or 0
-        start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        now = datetime.now(timezone.utc)
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_recognitions = db.scalar(select(func.count(RecognitionLog.id)).where(RecognitionLog.occurred_at >= start)) or 0
-        recent_unknowns = db.scalar(select(func.count(RecognitionLog.id)).where(RecognitionLog.is_unknown.is_(True), RecognitionLog.occurred_at >= datetime.utcnow() - timedelta(days=7))) or 0
+        recent_unknowns = db.scalar(select(func.count(RecognitionLog.id)).where(RecognitionLog.is_unknown.is_(True), RecognitionLog.occurred_at >= now - timedelta(days=7))) or 0
         avg_confidence = db.scalar(select(func.avg(RecognitionLog.confidence))) or 0.0
         top_persons = [{"name": name, "hits": int(hits)} for name, hits in self.repo.top_persons(db)]
         logs = self.repo.logs_by_day(db, days=14)

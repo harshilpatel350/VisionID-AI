@@ -14,7 +14,7 @@ class ExportService:
         self.settings = load_settings()
 
     def recognition_dataframe(self, db: Session) -> pd.DataFrame:
-        logs = db.scalars(select(RecognitionLog).order_by(RecognitionLog.occurred_at.desc())).all()
+        logs = db.scalars(select(RecognitionLog).order_by(RecognitionLog.occurred_at.desc()).limit(self.settings.export_max_rows)).all()
         rows = []
         for log in logs:
             rows.append({

@@ -9,8 +9,11 @@ class RecognitionRepository:
     def add_log(self, db: Session, log: RecognitionLog) -> RecognitionLog:
         db.add(log); db.flush(); return log
 
-    def recent_logs(self, db: Session, limit: int = 100):
-        return list(db.scalars(select(RecognitionLog).order_by(RecognitionLog.occurred_at.desc()).limit(limit)).all())
+    def recent_logs(self, db: Session, limit: int = 100, offset: int = 0):
+        return list(db.scalars(select(RecognitionLog).order_by(RecognitionLog.occurred_at.desc()).offset(offset).limit(limit)).all())
+
+    def count_total_logs(self, db: Session) -> int:
+        return db.scalar(select(func.count(RecognitionLog.id))) or 0
 
     def today_total(self, db: Session) -> int:
         start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)

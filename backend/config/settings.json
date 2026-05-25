@@ -1,14 +1,23 @@
 {
   "app_name": "VisionID AI",
   "environment": "local",
+  "debug": false,
   "api_prefix": "/api",
   "host": "0.0.0.0",
   "port": 8001,
-  "secret_key": "visionid-ai-local-secret-key-change-me",
-  "access_token_expire_minutes": 1440,
+  "secret_key": "",
+  "access_token_expire_minutes": 30,
+  "refresh_token_expire_days": 7,
+  "max_login_attempts": 5,
+  "login_lockout_minutes": 15,
   "database_url": "mysql+pymysql://root:root@127.0.0.1:3306/visionid_ai?charset=utf8mb4",
+  "db_pool_size": 10,
+  "db_max_overflow": 20,
+  "db_pool_timeout": 30,
+  "db_pool_recycle": 1800,
   "cors_origins": [
-    "*"
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
   ],
   "auto_create_tables": true,
   "use_redis_cache": false,
@@ -17,10 +26,17 @@
   "face_dir": "storage/faces",
   "report_dir": "storage/reports",
   "log_dir": "storage/logs",
+  "max_upload_size_mb": 10,
+  "max_video_size_mb": 100,
   "recognition_cooldown_seconds": 30,
   "recognition_threshold": 0.35,
   "duplicate_similarity_threshold": 0.92,
   "quality_min_score": 0.10,
   "frame_skip": 3,
-  "max_batch_frames": 25
+  "max_batch_frames": 25,
+  "rate_limit_per_minute": 240,
+  "rate_limit_login_per_minute": 10,
+  "ws_max_connections_per_ip": 3,
+  "ws_max_fps": 15,
+  "export_max_rows": 50000
 }

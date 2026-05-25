@@ -24,6 +24,13 @@ class RecognitionService:
         self._smoothing_cache: dict[str, list[int | None]] = {} # session_id -> list of person_ids
         self._smoothing_window = 10
 
+    def cleanup_session(self, session_id: str) -> None:
+        """Called when a websocket connection closes to prevent memory leaks."""
+        self._smoothing_cache.pop(session_id, None)
+        # We could also cleanup cooldowns here if we wanted to be rigorous,
+        # but the cooldown keys append the person_id, so it's a bit harder to find all of them.
+        # Periodic cleanup handles cooldowns anyway.
+
     def _get_smoothed_match(self, session_id: str, current_person_id: int | None) -> int | None:
         if session_id not in self._smoothing_cache:
             self._smoothing_cache[session_id] = []

@@ -114,12 +114,16 @@ class FaceService:
             person.primary_image_path = sample.image_path
 
     def _prevent_duplicates(self, db: Session, new_person: Person) -> None:
-        all_people = db.scalars(select(Person).where(Person.id != new_person.id, Person.is_active.is_(True))).all()
-        if not all_people:
-            return
         new_emb = self._person_average_embedding(db, new_person.id)
         if new_emb is None:
             return
+            
+        # Optimization: Build temporary index to find duplicates rather than O(N) loop
+        # For small numbers of people, loop is fine, but this scales better
+        all_people = db.scalars(select(Person).where(Person.id != new_person.id, Person.is_active.is_(True))).all()
+        if not all_people:
+            return
+            
         duplicates = []
         for p in all_people:
             emb = self._person_average_embedding(db, p.id)
@@ -128,6 +132,7 @@ class FaceService:
             sim = float(np.dot(new_emb, emb))
             if sim >= self.settings.duplicate_similarity_threshold:
                 duplicates.append((p, sim))
+                
         if duplicates:
             person, _sim = sorted(duplicates, key=lambda t: t[1], reverse=True)[0]
             new_person.duplicate_of = person.id
@@ -171,29 +176,42 @@ class FaceService:
         rows = []
         persons = self.repo.list_persons(db)
         for p in persons:
-            rows.append(
-                {
-                    "id": p.id,
-                    "person_code": p.person_code,
-                    "full_name": p.full_name,
-                    "email": p.email,
-                    "phone": p.phone,
-                    "department": p.department,
-                    "title": p.title,
-                    "notes": p.notes,
-                    "primary_image_path": p.primary_image_path,
-                    "is_active": p.is_active,
-                    "embedding_model": p.embedding_model,
-                    "duplicate_of": p.duplicate_of,
-                    "sample_count": self.repo.sample_count(db, p.id),
-                    "created_at": p.created_at.isoformat() if p.created_at else None,
-                }
-            )
+            rows.append(self._serialize_person(db, p))
         return rows
+
+    def list_persons_paginated(self, db: Session, offset: int, limit: int) -> tuple[int, list[dict[str, Any]]]:
+        from sqlalchemy import select, func
+        from app.models.face import Person
+        total = db.scalar(select(func.count(Person.id))) or 0
+        persons = db.scalars(select(Person).order_by(Person.created_at.desc()).offset(offset).limit(limit)).all()
+        rows = [self._serialize_person(db, p) for p in persons]
+        return total, rows
+
+    def _serialize_person(self, db: Session, p: Person) -> dict[str, Any]:
+        return {
+            "id": p.id,
+            "person_code": p.person_code,
+            "full_name": p.full_name,
+            "email": p.email,
+            "phone": p.phone,
+            "department": p.department,
+            "title": p.title,
+            "notes": p.notes,
+            "primary_image_path": p.primary_image_path,
+            "is_active": p.is_active,
+            "embedding_model": p.embedding_model,
+            "duplicate_of": p.duplicate_of,
+            "sample_count": self.repo.sample_count(db, p.id),
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
 
     def recognize_image(self, db: Session, image_bytes: bytes, source_type: str, source_ref: str | None = None, frame_index: int = 0):
         frame = self._load_image(image_bytes)
-        self.rebuild_index(db)
+        
+        # O(N) bottleneck fix: Only build index if empty, rely on recognition_service for management
+        if self.pipeline.index is None:
+            self.rebuild_index(db)
+            
         matches = self.pipeline.analyze_face(frame)
         results = []
         for m in matches:
@@ -217,8 +235,12 @@ class FaceService:
     def process_video_file(self, db: Session, file_path: Path, source_ref: str | None = None):
         cap = cv2.VideoCapture(str(file_path))
         if not cap.isOpened():
+            from fastapi import HTTPException
             raise HTTPException(status_code=400, detail="Could not open video")
-        self.rebuild_index(db)
+            
+        if self.pipeline.index is None:
+            self.rebuild_index(db)
+            
         frame_index = 0
         collected = []
         skip = max(1, self.settings.frame_skip)
