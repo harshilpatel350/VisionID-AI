@@ -17,6 +17,92 @@ type RecognitionLog = {
   phone?: string;
 };
 
+function drawPremiumBoundingBox(ctx: CanvasRenderingContext2D, m: RecognitionLog) {
+  const isUnknown = m.is_unknown;
+  const color = isUnknown ? "#f97316" : "#10b981";
+  const bgFill = isUnknown ? "rgba(249, 115, 22, 0.15)" : "rgba(16, 185, 129, 0.15)";
+  
+  const { x1, y1, x2, y2 } = m.bbox;
+  const w = x2 - x1;
+  const h = y2 - y1;
+  const cornerLength = Math.max(10, Math.min(w, h) * 0.2);
+  
+  ctx.save();
+  
+  // Draw subtle background fill
+  ctx.fillStyle = bgFill;
+  ctx.fillRect(x1, y1, w, h);
+  
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, w * 0.015);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  
+  // Top-left
+  ctx.beginPath();
+  ctx.moveTo(x1, y1 + cornerLength);
+  ctx.lineTo(x1, y1);
+  ctx.lineTo(x1 + cornerLength, y1);
+  ctx.stroke();
+  
+  // Top-right
+  ctx.beginPath();
+  ctx.moveTo(x2 - cornerLength, y1);
+  ctx.lineTo(x2, y1);
+  ctx.lineTo(x2, y1 + cornerLength);
+  ctx.stroke();
+  
+  // Bottom-right
+  ctx.beginPath();
+  ctx.moveTo(x2, y2 - cornerLength);
+  ctx.lineTo(x2, y2);
+  ctx.lineTo(x2 - cornerLength, y2);
+  ctx.stroke();
+  
+  // Bottom-left
+  ctx.beginPath();
+  ctx.moveTo(x1 + cornerLength, y2);
+  ctx.lineTo(x1, y2);
+  ctx.lineTo(x1, y2 - cornerLength);
+  ctx.stroke();
+  
+  // Label
+  const fontSize = Math.max(12, Math.floor(w * 0.08));
+  ctx.font = `600 ${fontSize}px sans-serif`;
+  const text = `${m.full_name} ${(m.confidence * 100).toFixed(1)}%`;
+  const textWidth = ctx.measureText(text).width;
+  const textHeight = fontSize;
+  
+  const padX = 8;
+  const padY = 6;
+  const labelW = textWidth + padX * 2;
+  const labelH = textHeight + padY * 2;
+  const labelY = y1 - labelH - 6;
+  
+  // Label background with gradient
+  const grad = ctx.createLinearGradient(x1, labelY, x1 + labelW, labelY);
+  grad.addColorStop(0, color);
+  grad.addColorStop(1, isUnknown ? "#ea580c" : "#059669");
+  
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(x1, Math.max(0, labelY), labelW, labelH, [6, 6, 6, 6]);
+  } else {
+    ctx.fillRect(x1, Math.max(0, labelY), labelW, labelH);
+  }
+  ctx.fill();
+  
+  // Label text shadow
+  ctx.shadowColor = "rgba(0,0,0,0.5)";
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 1;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(text, x1 + padX, Math.max(0, labelY) + textHeight + padY / 2 - 1);
+  
+  ctx.restore();
+}
+
 export function WebcamModal() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -112,19 +198,7 @@ export function WebcamModal() {
               ctx.font = `${Math.max(14, Math.floor(w / 40))}px sans-serif`;
               
               msg.logs.forEach((m: RecognitionLog) => {
-                const color = m.is_unknown ? "#f97316" : "#10b981";
-                ctx.strokeStyle = color;
-                ctx.fillStyle = color;
-                const { x1, y1, x2, y2 } = m.bbox;
-                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-                
-                const text = `${m.full_name} ${(m.confidence * 100).toFixed(1)}%`;
-                const textWidth = ctx.measureText(text).width;
-                const textHeight = parseInt(ctx.font, 10);
-                
-                ctx.fillRect(x1, y1 - textHeight - 4, textWidth + 8, textHeight + 4);
-                ctx.fillStyle = "#ffffff";
-                ctx.fillText(text, x1 + 4, y1 - 4);
+                drawPremiumBoundingBox(ctx, m);
               });
             }
           }
@@ -214,21 +288,7 @@ export function WebcamModal() {
         ctx.font = `${Math.max(14, Math.floor(canvas.width / 40))}px sans-serif`;
         
         results.forEach((m: RecognitionLog) => {
-          const color = m.is_unknown ? "#f97316" : "#10b981"; // orange-500 / emerald-500
-          ctx.strokeStyle = color;
-          ctx.fillStyle = color;
-          
-          const { x1, y1, x2, y2 } = m.bbox;
-          ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-          
-          const text = `${m.full_name} ${(m.confidence * 100).toFixed(1)}%`;
-          const textWidth = ctx.measureText(text).width;
-          const textHeight = parseInt(ctx.font, 10);
-          
-          ctx.fillRect(x1, y1 - textHeight - 4, textWidth + 8, textHeight + 4);
-          
-          ctx.fillStyle = "#ffffff";
-          ctx.fillText(text, x1 + 4, y1 - 4);
+          drawPremiumBoundingBox(ctx, m);
         });
         
         if (annotatedRef.current) {

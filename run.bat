@@ -1,46 +1,83 @@
 @echo off
-title VisionID AI - Launcher
+setlocal EnableDelayedExpansion
+title VisionID AI - Server Launcher
 cls
 
-echo ===================================================
-echo               VisionID AI Launcher
-echo ===================================================
+:: Define Colors for Windows 10+ ANSI
+set "ESC="
+set "RED=%ESC%[91m"
+set "GREEN=%ESC%[92m"
+set "YELLOW=%ESC%[93m"
+set "BLUE=%ESC%[94m"
+set "CYAN=%ESC%[96m"
+set "RESET=%ESC%[0m"
+
+echo %CYAN%===================================================%RESET%
+echo %BLUE%               VisionID AI Launcher%RESET%
+echo %CYAN%===================================================%RESET%
 echo.
 
-:: Check for Backend Virtual Environment
+:: 1. Check & Setup Backend (Python)
+echo %YELLOW%[1/3] Checking Backend Environment...%RESET%
 if not exist "backend\venv" (
-    echo [WARNING] Backend virtual environment 'venv' was not found at 'backend\venv'.
-    echo Please make sure you have created the virtual environment and installed requirements.
-    echo.
-    pause
-    exit /b 1
+    echo %RED%[INFO] Virtual environment missing. Creating one now...%RESET%
+    cd backend
+    python -m venv venv
+    if errorlevel 1 (
+        echo %RED%[ERROR] Failed to create virtual environment. Ensure Python is installed and in PATH.%RESET%
+        pause
+        exit /b 1
+    )
+    echo %GREEN%[INFO] Virtual environment created.%RESET%
+    echo %YELLOW%[INFO] Installing requirements...%RESET%
+    call venv\Scripts\activate.bat
+    pip install -r requirements.txt
+    deactivate
+    cd ..
+) else (
+    echo %GREEN%[OK] Backend venv found.%RESET%
 )
 
-:: Check for Frontend node_modules and install if missing
+:: 2. Check & Setup Frontend (Node)
+echo.
+echo %YELLOW%[2/3] Checking Frontend Environment...%RESET%
 if not exist "frontend\node_modules" (
-    echo [INFO] frontend/node_modules not found. Running 'npm install' inside frontend directory...
+    echo %RED%[INFO] node_modules missing. Installing dependencies...%RESET%
     cd frontend
     call npm install
     cd ..
-    echo.
+) else (
+    echo %GREEN%[OK] Frontend node_modules found.%RESET%
 )
 
-echo [INFO] Starting VisionID AI Backend...
-start "VisionID AI Backend" /D "%~dp0backend" cmd /k "venv\Scripts\python.exe -m app.main"
+:: 3. Start Services
+echo.
+echo %YELLOW%[3/3] Starting Services...%RESET%
 
-echo [INFO] Starting VisionID AI Frontend...
-start "VisionID AI Frontend" /D "%~dp0frontend" cmd /k "npm run dev"
+echo %GREEN%[START] Booting Backend Server (localhost:8001)...%RESET%
+start "VisionID AI Backend" /D "%~dp0backend" cmd /k "title VisionID AI - Backend && venv\Scripts\python.exe -m app.main"
+
+:: Wait 3 seconds for backend to start up
+timeout /t 3 /nobreak >nul
+
+echo %GREEN%[START] Booting Frontend Next.js App (localhost:3000)...%RESET%
+start "VisionID AI Frontend" /D "%~dp0frontend" cmd /k "title VisionID AI - Frontend && npm run dev"
 
 echo.
-echo ===================================================
-echo   VisionID AI is starting up!
+echo %CYAN%===================================================%RESET%
+echo %GREEN%  VisionID AI is now starting up!%RESET%
 echo.
-echo   - Backend:  http://localhost:8001
-echo   - API Docs: http://localhost:8001/docs
-echo   - Frontend: http://localhost:3000
+echo   - Backend API:  %BLUE%http://localhost:8001%RESET%
+echo   - API Docs:     %BLUE%http://localhost:8001/docs%RESET%
+echo   - Frontend:     %BLUE%http://localhost:3000%RESET%
+echo %CYAN%===================================================%RESET%
 echo.
-echo   Separate console windows have been opened for 
-echo   backend and frontend processes.
-echo ===================================================
+echo %YELLOW%[INFO] Launching browser in 3 seconds...%RESET%
+timeout /t 3 /nobreak >nul
+start http://localhost:3000
+
 echo.
-pause
+echo Press any key to exit this launcher window...
+echo (The backend and frontend console windows will remain open)
+pause >nul
+

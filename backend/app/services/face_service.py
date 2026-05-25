@@ -171,6 +171,7 @@ class FaceService:
                 }
             )
         self.pipeline.set_registry(embeddings)
+        self.pipeline.save_index()
 
     def list_persons(self, db: Session) -> list[dict[str, Any]]:
         rows = []
@@ -208,9 +209,10 @@ class FaceService:
     def recognize_image(self, db: Session, image_bytes: bytes, source_type: str, source_ref: str | None = None, frame_index: int = 0):
         frame = self._load_image(image_bytes)
         
-        # O(N) bottleneck fix: Only build index if empty, rely on recognition_service for management
+        # O(N) bottleneck fix: try disk cache first, then rebuild from DB
         if self.pipeline.index is None:
-            self.rebuild_index(db)
+            if not self.pipeline.load_index():
+                self.rebuild_index(db)
             
         matches = self.pipeline.analyze_face(frame)
         results = []
@@ -239,7 +241,8 @@ class FaceService:
             raise HTTPException(status_code=400, detail="Could not open video")
             
         if self.pipeline.index is None:
-            self.rebuild_index(db)
+            if not self.pipeline.load_index():
+                self.rebuild_index(db)
             
         frame_index = 0
         collected = []

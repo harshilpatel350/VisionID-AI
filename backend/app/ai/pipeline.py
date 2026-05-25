@@ -1,5 +1,8 @@
 from __future__ import annotations
+import json
+import logging
 from dataclasses import dataclass, asdict
+from pathlib import Path
 from typing import Any
 
 import cv2
@@ -10,6 +13,8 @@ from app.ai.detector import FaceDetector
 from app.ai.embedder import FaceEmbedder
 from app.ai.quality import face_quality, blur_score, low_light_score
 from app.config import load_settings
+
+logger = logging.getLogger("visionid")
 
 @dataclass
 class RecognitionMatch:
@@ -68,6 +73,59 @@ class FacePipeline:
         index = faiss.IndexFlatIP(dim)
         index.add(vectors)
         self.index = index
+
+    # ── Persistent FAISS Storage ────────────────────────────────
+
+    def _index_dir(self) -> Path:
+        d = self.settings.base_dir / "storage" / "faiss"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def save_index(self) -> None:
+        """Persist FAISS index + metadata to disk."""
+        if self.index is None or not self._meta:
+            return
+        idx_dir = self._index_dir()
+        try:
+            faiss.write_index(self.index, str(idx_dir / "face.index"))
+            # Save metadata (without the numpy vectors — those live in the index)
+            serializable = []
+            for m in self._meta:
+                entry = {k: v for k, v in m.items() if k != "vector"}
+                serializable.append(entry)
+            (idx_dir / "meta.json").write_text(json.dumps(serializable, default=str), encoding="utf-8")
+            logger.info("FAISS index saved to disk (%d vectors)", self.index.ntotal)
+        except Exception as e:
+            logger.error("Failed to save FAISS index: %s", e)
+
+    def load_index(self) -> bool:
+        """Load persisted FAISS index + metadata from disk. Returns True if successful."""
+        idx_dir = self._index_dir()
+        idx_path = idx_dir / "face.index"
+        meta_path = idx_dir / "meta.json"
+        if not idx_path.exists() or not meta_path.exists():
+            return False
+        try:
+            self.index = faiss.read_index(str(idx_path))
+            raw_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            self._meta = raw_meta
+            self._vectors = None  # reconstructed from FAISS if needed
+            logger.info("FAISS index loaded from disk (%d vectors)", self.index.ntotal)
+            return True
+        except Exception as e:
+            logger.error("Failed to load FAISS index from disk: %s", e)
+            self.index = None
+            self._meta = []
+            return False
+
+    def invalidate_disk_index(self) -> None:
+        """Delete persisted index when the registry changes."""
+        idx_dir = self._index_dir()
+        for f in ("face.index", "meta.json"):
+            p = idx_dir / f
+            if p.exists():
+                p.unlink()
+        logger.info("Disk FAISS index invalidated")
 
     def _normalize(self, vectors: np.ndarray) -> np.ndarray:
         norms = np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-6
