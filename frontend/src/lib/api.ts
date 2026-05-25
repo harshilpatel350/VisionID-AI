@@ -26,8 +26,25 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // If the response is wrapped in a ResponseEnvelope, unwrap it
+    if (res.data && typeof res.data === "object" && "success" in res.data) {
+      if (res.data.success) {
+        res.data = res.data.data;
+      }
+    }
+    return res;
+  },
   (err) => {
+    // Normalize structured error responses for the frontend
+    if (err?.response?.data && typeof err.response.data === "object") {
+      const errorObj = err.response.data.error;
+      if (errorObj && typeof errorObj === "object") {
+        // Expose error message via .detail for backward compatibility with frontend code
+        err.response.data.detail = errorObj.message;
+      }
+    }
+
     if (err?.response?.status === 401 && typeof window !== "undefined") {
       localStorage.removeItem("visionid_token");
       localStorage.removeItem("visionid_user");
@@ -38,4 +55,5 @@ api.interceptors.response.use(
     return Promise.reject(err);
   }
 );
+
 
