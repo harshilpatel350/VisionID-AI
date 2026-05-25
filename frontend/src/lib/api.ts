@@ -12,9 +12,6 @@ export const API_BASE = getApiBase();
 
 export const api = axios.create({
   baseURL: API_BASE,
-  headers: {
-    "Content-Type": "application/json",
-  },
 });
 
 api.interceptors.request.use((config) => {
@@ -40,8 +37,13 @@ api.interceptors.response.use(
     if (err?.response?.data && typeof err.response.data === "object") {
       const errorObj = err.response.data.error;
       if (errorObj && typeof errorObj === "object") {
-        // Expose error message via .detail for backward compatibility with frontend code
         err.response.data.detail = errorObj.message;
+        if (errorObj.details && Array.isArray(errorObj.details)) {
+          const detailStr = errorObj.details.map((d: any) => `${d.field}: ${d.message}`).join(", ");
+          if (detailStr) {
+            err.response.data.detail += ` (${detailStr})`;
+          }
+        }
       }
     }
 
