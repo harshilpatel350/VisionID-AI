@@ -100,7 +100,7 @@ export default function RegistryPage() {
     if (capturedImage) fd.append("images", capturedImage, "capture.jpg");
     
     try {
-      await api.post("/faces/persons", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      await api.post("/faces/persons", fd);
       setMessage("Person registered successfully");
       setForm({ full_name: "", email: "", phone: "", department: "", title: "", notes: "" });
       setFiles(null);

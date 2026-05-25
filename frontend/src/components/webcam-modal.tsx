@@ -153,12 +153,13 @@ export function WebcamModal() {
     if (!isCameraOn) return;
     setIsLiveActive(true);
     
-    const wsUrl = API_BASE.replace("http://", "ws://").replace("https://", "wss://") + "/recognition/ws";
+    const token = localStorage.getItem("visionid_token");
+    const wsUrl = API_BASE.replace("http://", "ws://").replace("https://", "wss://") + "/recognition/ws" + (token ? `?token=${token}` : "");
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onopen = () => setStatus("Connected — detecting faces...");
-    ws.onclose = () => { 
-      setStatus("Disconnected from Live AI"); 
+    ws.onclose = (ev) => { 
+      setStatus(`Disconnected from Live AI (Code: ${ev.code})`); 
       setIsLiveActive(false); 
       setShowAnnotated(false); 
     };
@@ -277,9 +278,7 @@ export function WebcamModal() {
       fd.append("image", blob, "capture.jpg");
       
       try {
-        const res = await api.post("/recognition/image", fd, {
-          headers: { "Content-Type": "multipart/form-data" }
-        });
+        const res = await api.post("/recognition/image", fd);
         const results = res.data.results || [];
         setLogs(results);
         
