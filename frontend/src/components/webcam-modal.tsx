@@ -116,6 +116,15 @@ export function WebcamModal() {
   const [showAnnotated, setShowAnnotated] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isLiveActive, setIsLiveActive] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      // Stop everything when dialog closes
+      turnOffCamera();
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -279,7 +288,8 @@ export function WebcamModal() {
       
       try {
         const res = await api.post("/recognition/image", fd);
-        const results = res.data.results || [];
+        // After ResponseEnvelope unwrapping, res.data is the array directly
+        const results = Array.isArray(res.data) ? res.data : (res.data?.results || []);
         setLogs(results);
         
         // Draw bounding boxes natively
@@ -309,7 +319,7 @@ export function WebcamModal() {
   };
 
   return (
-    <Dialog>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="secondary">Open Webcam Studio</Button>
       </DialogTrigger>
