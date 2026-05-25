@@ -11,7 +11,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 
 
-@dataclass(frozen=True)
+@dataclass
 class RequestContext:
     request_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     client_ip: str = ""
