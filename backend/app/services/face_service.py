@@ -129,6 +129,9 @@ class FaceService:
             emb = self._person_average_embedding(db, p.id)
             if emb is None:
                 continue
+            # Skip if embedding dimensions don't match (different models)
+            if new_emb.shape[0] != emb.shape[0]:
+                continue
             sim = float(np.dot(new_emb, emb))
             if sim >= self.settings.duplicate_similarity_threshold:
                 duplicates.append((p, sim))
