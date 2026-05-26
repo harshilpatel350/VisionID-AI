@@ -1,7 +1,7 @@
 export type User = {
   id: number;
   full_name: string;
-  email: string;
+  username: string;
   role: "admin" | "operator" | "viewer";
   is_active: boolean;
 };

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict
 
 class ORMBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)

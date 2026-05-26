@@ -18,7 +18,7 @@ export default function AdminPage() {
             {(users.data ?? []).map((u: any) => (
               <div key={u.id} className="rounded-2xl border border-white/5 bg-black/20 p-4 text-sm hover:border-primary/30 transition-colors">
                 <div className="font-medium text-white">{u.full_name}</div>
-                <div className="text-muted">{u.username ?? u.email} • <span className="text-primary">{u.role}</span></div>
+                <div className="text-muted">{u.username} • <span className="text-primary">{u.role}</span></div>
               </div>
             ))}
           </CardContent>

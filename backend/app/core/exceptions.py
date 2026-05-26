@@ -59,7 +59,7 @@ class InvalidCredentialsError(AppException):
     http_status = 401
     error_code = "AUTH_005"
 
-    def __init__(self, message: str = "Invalid email or password"):
+    def __init__(self, message: str = "Invalid username or password"):
         super().__init__(message)
 
 

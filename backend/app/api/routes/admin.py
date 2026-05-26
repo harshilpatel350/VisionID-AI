@@ -23,7 +23,7 @@ def users(
     total = db.scalar(select(func.count(User.id))) or 0
     rows = db.scalars(select(User).order_by(User.created_at.desc()).offset(offset).limit(limit)).all()
     
-    data = [{"id": u.id, "full_name": u.full_name, "email": u.email, "role": u.role, "is_active": u.is_active} for u in rows]
+    data = [{"id": u.id, "full_name": u.full_name, "username": u.username, "role": u.role, "is_active": u.is_active} for u in rows]
     
     meta = PaginatedMeta(
         total=total,
