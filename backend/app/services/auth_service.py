@@ -1,5 +1,6 @@
 from __future__ import annotations
 import time
+import logging
 from sqlalchemy.orm import Session
 from fastapi import Request
 
@@ -21,6 +22,9 @@ from app.core.security import (
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import RegisterRequest, LoginRequest
+
+logger = logging.getLogger("visionid")
+
 
 
 class AuthService:
@@ -86,14 +90,28 @@ class AuthService:
         ctx = get_request_context()
         username = payload.username.lower()
         
+        logger.debug("Auth Login Request: incoming username=%s", username)
+        
         self._check_bruteforce(ctx.client_ip, username)
 
         user = self.repo.get_by_username(db, username)
-        if not user or not verify_password(payload.password, user.password_hash):
+        logger.debug("Auth Login Lookup: user found=%s", bool(user))
+        
+        if not user:
+            logger.warning("Auth Login Failed: user not found username=%s", username)
+            self._record_failed_attempt(ctx.client_ip, username)
+            raise InvalidCredentialsError()
+            
+        password_ok = verify_password(payload.password, user.password_hash)
+        logger.debug("Auth Login Password Verification: compare result=%s", password_ok)
+        
+        if not password_ok:
+            logger.warning("Auth Login Failed: password mismatch username=%s", username)
             self._record_failed_attempt(ctx.client_ip, username)
             raise InvalidCredentialsError()
 
         if not user.is_active:
+            logger.warning("Auth Login Failed: user inactive username=%s", username)
             raise AccountLockedError("User account is inactive")
 
         self._record_success(ctx.client_ip, username)
@@ -104,7 +122,10 @@ class AuthService:
         )
         refresh_token = create_refresh_token(subject=str(user.id))
         
+        logger.info("Auth Login Success: token created for user_id=%s, username=%s", user.id, user.username)
+        
         return access_token, refresh_token, user
+
 
     def logout(self, access_token: str | None, refresh_token: str | None) -> None:
         if access_token:
