@@ -34,16 +34,16 @@ export function MetricsGrid({ stats }: { stats: any }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: idx * 0.1 }}
           >
-            <Card className="h-full">
+            <Card className="h-full glass-violet border-primary/20 hover:border-primary/40 transition-colors">
               <CardContent className="flex items-start justify-between p-0 h-full">
                 <div>
-                  <div className="card-title">{it.label}</div>
-                  <div className="mt-2 text-3xl font-semibold">
+                  <div className="card-title text-white">{it.label}</div>
+                  <div className="mt-2 text-3xl font-bold tracking-tight text-white">
                     <AnimatedNumber value={it.value} />
                   </div>
-                  <div className="mt-2 text-xs text-slate-400">{it.extra}</div>
+                  <div className="mt-2 text-xs text-muted">{it.extra}</div>
                 </div>
-                <div className="rounded-2xl bg-indigo-500/15 p-3 text-indigo-300">
+                <div className="rounded-2xl bg-primary/20 p-3 text-accent shadow-glow-violet">
                   <Icon className="h-5 w-5" />
                 </div>
               </CardContent>

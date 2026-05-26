@@ -10,17 +10,22 @@ type RecognitionLog = {
   confidence: number;
   is_unknown: boolean;
   bbox: { x1: number; y1: number; x2: number; y2: number };
+  person_id?: number | null;
   person_code?: string;
   department?: string;
   title?: string;
   email?: string;
   phone?: string;
+  mood?: string | null;
+  liveness_score?: number | null;
+  tracking_id?: number;
+  is_enhanced?: boolean;
 };
 
 function drawPremiumBoundingBox(ctx: CanvasRenderingContext2D, m: RecognitionLog) {
   const isUnknown = m.is_unknown;
-  const color = isUnknown ? "#f97316" : "#10b981";
-  const bgFill = isUnknown ? "rgba(249, 115, 22, 0.15)" : "rgba(16, 185, 129, 0.15)";
+  const color = isUnknown ? "#f43f5e" : "#b4a5f5"; // Rose vs Neon Lavender
+  const bgFill = isUnknown ? "rgba(244, 63, 94, 0.15)" : "rgba(180, 165, 245, 0.15)";
   
   const { x1, y1, x2, y2 } = m.bbox;
   const w = x2 - x1;
@@ -69,7 +74,7 @@ function drawPremiumBoundingBox(ctx: CanvasRenderingContext2D, m: RecognitionLog
   // Label
   const fontSize = Math.max(12, Math.floor(w * 0.08));
   ctx.font = `600 ${fontSize}px sans-serif`;
-  const text = `${m.full_name} ${(m.confidence * 100).toFixed(1)}%`;
+  const text = `${m.is_unknown ? "Unknown" : m.full_name} ${(m.confidence * 100).toFixed(1)}%`;
   const textWidth = ctx.measureText(text).width;
   const textHeight = fontSize;
   
@@ -82,7 +87,7 @@ function drawPremiumBoundingBox(ctx: CanvasRenderingContext2D, m: RecognitionLog
   // Label background with gradient
   const grad = ctx.createLinearGradient(x1, labelY, x1 + labelW, labelY);
   grad.addColorStop(0, color);
-  grad.addColorStop(1, isUnknown ? "#ea580c" : "#059669");
+  grad.addColorStop(1, isUnknown ? "#be123c" : "#8a63f2"); // Darker rose vs primary violet
   
   ctx.fillStyle = grad;
   ctx.beginPath();
@@ -100,8 +105,21 @@ function drawPremiumBoundingBox(ctx: CanvasRenderingContext2D, m: RecognitionLog
   ctx.fillStyle = "#ffffff";
   ctx.fillText(text, x1 + padX, Math.max(0, labelY) + textHeight + padY / 2 - 1);
   
+  // Draw Tracking ID if present
+  if (m.tracking_id !== undefined) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    const trW = 40;
+    const trH = 20;
+    ctx.fillRect(x2 - trW, y2 - trH, trW, trH);
+    ctx.fillStyle = "white";
+    ctx.font = `500 ${Math.max(10, fontSize * 0.7)}px monospace`;
+    ctx.fillText(`ID:${m.tracking_id}`, x2 - trW + 4, y2 - 6);
+  }
+  
   ctx.restore();
 }
+
+import { FaceTrackerCard } from "./ui/face-tracker-card";
 
 export function WebcamModal() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -116,12 +134,12 @@ export function WebcamModal() {
   const [showAnnotated, setShowAnnotated] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isLiveActive, setIsLiveActive] = useState(false);
+  const [enableEnhancement, setEnableEnhancement] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
     if (!open) {
-      // Stop everything when dialog closes
       turnOffCamera();
     }
   };
@@ -163,7 +181,10 @@ export function WebcamModal() {
     setIsLiveActive(true);
     
     const token = localStorage.getItem("visionid_token");
-    const wsUrl = API_BASE.replace("http://", "ws://").replace("https://", "wss://") + "/recognition/ws" + (token ? `?token=${token}` : "");
+    // Pass enhancement flag via URL query param to WS
+    const wsUrl = API_BASE.replace("http://", "ws://").replace("https://", "wss://") + 
+                  `/recognition/ws?enhance=${enableEnhancement ? 'true' : 'false'}` + 
+                  (token ? `&token=${token}` : "");
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onopen = () => setStatus("Connected — detecting faces...");
@@ -288,11 +309,9 @@ export function WebcamModal() {
       
       try {
         const res = await api.post("/recognition/image", fd);
-        // After ResponseEnvelope unwrapping, res.data is the array directly
         const results = Array.isArray(res.data) ? res.data : (res.data?.results || []);
         setLogs(results);
         
-        // Draw bounding boxes natively
         ctx.lineWidth = Math.max(2, Math.floor(canvas.width / 400));
         ctx.font = `${Math.max(14, Math.floor(canvas.width / 40))}px sans-serif`;
         
@@ -321,96 +340,99 @@ export function WebcamModal() {
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="secondary">Open Webcam Studio</Button>
+        <Button variant="secondary" className="w-full bg-primary/20 text-accent border border-primary/20 hover:bg-primary/30">Open Webcam Studio</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-5xl">
-        <DialogTitle className="sr-only">Webcam Recognition Studio</DialogTitle>
-        <div className="grid gap-4 md:grid-cols-[1fr_320px]">
-          <div className="relative">
+      <DialogContent className="max-w-5xl overflow-hidden p-0 bg-[rgb(var(--bg))]/95 backdrop-blur-xl border-primary/20 shadow-glow-violet-lg">
+        <div className="grid gap-0 md:grid-cols-[1fr_350px] min-h-[500px]">
+          <div className="relative bg-black flex items-center justify-center p-4">
             {/* Raw camera feed always visible */}
             <video
               ref={videoRef}
               autoPlay
               playsInline
-              className="aspect-video w-full rounded-2xl bg-black object-contain"
+              className="aspect-video w-full rounded-lg bg-black object-cover shadow-2xl ring-1 ring-white/10"
             />
             {/* Overlay canvas for Live AI bounding boxes */}
             <canvas
               ref={overlayRef}
-              className={`absolute inset-0 aspect-video w-full h-full rounded-2xl object-contain pointer-events-none ${isLiveActive ? "block" : "hidden"}`}
+              className={`absolute inset-0 aspect-video w-full h-full rounded-lg object-contain pointer-events-none ${isLiveActive ? "block" : "hidden"} p-4`}
             />
             {/* Annotated frame from server for photo captures */}
             <img
               ref={annotatedRef}
               alt="Annotated webcam feed"
-              className={`absolute inset-0 aspect-video w-full h-full rounded-2xl bg-black object-contain ${showAnnotated && !isLiveActive ? "block" : "hidden"}`}
+              className={`absolute inset-0 aspect-video w-full h-full rounded-lg bg-black object-contain ${showAnnotated && !isLiveActive ? "block" : "hidden"} p-4`}
             />
             <canvas ref={canvasRef} className="hidden" />
             {/* Face count badge */}
             {showAnnotated && logs.length > 0 && (
-              <div className="absolute left-3 top-3 flex items-center gap-2 rounded-xl bg-black/70 px-3 py-1.5 text-xs font-medium text-white backdrop-blur">
-                <span className={`inline-block h-2 w-2 rounded-full ${isLiveActive ? "bg-emerald-400 animate-pulse" : "bg-sky-400"}`} />
+              <div className="absolute left-6 top-6 flex items-center gap-2 rounded-lg bg-black/80 px-4 py-2 text-sm font-medium text-white backdrop-blur shadow-lg ring-1 ring-white/20">
+                <span className={`inline-block h-2.5 w-2.5 rounded-full ${isLiveActive ? "bg-green-500 animate-pulse" : "bg-blue-500"}`} />
                 {logs.length} face{logs.length !== 1 ? "s" : ""} detected
               </div>
             )}
           </div>
-          <div className="space-y-4 flex flex-col h-full">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300 h-[72px] shrink-0 overflow-hidden">
-              <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Status</div>
-              <span className="text-white line-clamp-1">{status}</span>
+          <div className="flex flex-col h-full bg-[rgb(var(--panel))]/40 border-l border-primary/20">
+            <div className="p-4 border-b border-primary/20 glass-violet">
+              <DialogTitle className="text-lg font-semibold tracking-tight text-white">Recognition Stream</DialogTitle>
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-xs text-muted font-mono">{status}</p>
+              </div>
             </div>
 
-            {/* Recognition results - fixed height or flexible but contained */}
-            <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Detections</div>
+            {/* Recognition results */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center justify-between">
+                <span>Active Detections</span>
+                <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full">{logs.length}</span>
+              </div>
               {logs.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {logs.map((log, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex flex-col gap-1 rounded-xl px-3 py-2 text-sm ${
-                        log.is_unknown
-                          ? "border border-orange-500/20 bg-orange-500/10 text-orange-200"
-                          : "border border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">{log.full_name}</span>
-                        <span className="text-xs opacity-75">{(log.confidence * 100).toFixed(1)}%</span>
-                      </div>
-                      {!log.is_unknown && (
-                        <div className="mt-1 flex flex-col gap-0.5 text-xs opacity-80">
-                          {log.person_code && <div><span className="font-semibold">ID:</span> {log.person_code}</div>}
-                          {log.title && <div><span className="font-semibold">Title:</span> {log.title}</div>}
-                          {log.department && <div><span className="font-semibold">Dept:</span> {log.department}</div>}
-                          {log.email && <div><span className="font-semibold">Email:</span> {log.email}</div>}
-                          {log.phone && <div><span className="font-semibold">Phone:</span> {log.phone}</div>}
-                        </div>
-                      )}
-                    </div>
+                    <FaceTrackerCard key={idx} match={log as any} />
                   ))}
                 </div>
               ) : (
-                <div className="h-full flex items-center justify-center text-slate-500 text-xs italic">
-                  No faces detected
+                <div className="h-40 flex flex-col items-center justify-center text-muted-foreground text-sm italic opacity-70">
+                  <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                    <span className="text-xl">👤</span>
+                  </div>
+                  No faces in view
                 </div>
               )}
             </div>
 
-            <div className="flex flex-col gap-2 mt-auto shrink-0">
+            <div className="p-4 border-t border-primary/20 glass-violet flex flex-col gap-3 shrink-0">
+              <div className="flex items-center gap-2 px-1 mb-1">
+                <input 
+                  type="checkbox" 
+                  id="enhance" 
+                  checked={enableEnhancement} 
+                  onChange={(e) => setEnableEnhancement(e.target.checked)}
+                  className="rounded border-primary/40 bg-black/40 text-primary focus:ring-primary"
+                  disabled={isLiveActive}
+                />
+                <label htmlFor="enhance" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-white">
+                  Enable Low-Light Enhancement
+                </label>
+              </div>
+              
               {!isCameraOn ? (
-                <Button className="w-full" onClick={turnOnCamera}>Turn On Camera</Button>
+                <Button className="w-full font-medium shadow-glow-violet bg-primary hover:bg-primary/90 text-white" onClick={turnOnCamera} size="lg">Turn On Camera</Button>
               ) : (
                 <>
                   <div className="flex gap-2">
-                    <Button className="flex-1" variant="secondary" onClick={capturePhoto}>📸 Capture</Button>
+                    <Button className="flex-1 shadow-sm bg-primary/20 text-accent hover:bg-primary/30 border border-primary/30" variant="secondary" onClick={capturePhoto}>📸 Photo</Button>
                     {isLiveActive ? (
-                      <Button className="flex-1" variant="destructive" onClick={stopLiveAI}>⏹ Stop Live</Button>
+                      <Button className="flex-1 shadow-sm bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30" variant="destructive" onClick={stopLiveAI}>
+                        <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse mr-2"></span>
+                        Stop Live
+                      </Button>
                     ) : (
-                      <Button className="flex-1" variant="default" onClick={startLiveAI}>▶️ Live AI</Button>
+                      <Button className="flex-1 shadow-glow-violet bg-primary hover:bg-primary/90 text-white" variant="default" onClick={startLiveAI}>▶️ Start Live AI</Button>
                     )}
                   </div>
-                  <Button className="w-full" variant="outline" onClick={turnOffCamera}>Turn Off Camera</Button>
+                  <Button className="w-full text-muted hover:text-white hover:bg-white/5" variant="ghost" onClick={turnOffCamera}>Disconnect Camera</Button>
                 </>
               )}
             </div>

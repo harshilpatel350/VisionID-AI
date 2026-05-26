@@ -12,6 +12,9 @@ import numpy as np
 from app.ai.detector import FaceDetector
 from app.ai.embedder import FaceEmbedder
 from app.ai.quality import face_quality, blur_score, low_light_score
+from app.ai.emotion import EmotionDetector
+from app.ai.liveness import LivenessDetector
+from app.ai.enhancement import LowLightEnhancer
 from app.config import load_settings
 
 logger = logging.getLogger("visionid")
@@ -33,12 +36,21 @@ class RecognitionMatch:
     title: str | None = None
     email: str | None = None
     phone: str | None = None
+    mood: str | None = None
+    mood_scores: dict[str, float] | None = None
+    liveness_score: float | None = None
+    liveness_suspicious: bool = False
+    tracking_id: int | None = None
+    is_enhanced: bool = False
 
 class FacePipeline:
     def __init__(self):
         self.settings = load_settings()
         self.detector = FaceDetector()
         self.embedder = FaceEmbedder()
+        self.emotion_detector = EmotionDetector()
+        self.liveness_detector = LivenessDetector(threshold=0.5)
+        self.enhancer = LowLightEnhancer()
         self.index = None
         self._vectors: np.ndarray | None = None
         self._meta: list[dict[str, Any]] = []
@@ -50,15 +62,11 @@ class FacePipeline:
             self._vectors = None
             return
             
-        # Ensure all vectors have the same dimension as the first one
         first_dim = len(embeddings[0]["vector"])
         valid_embeddings = []
         for e in embeddings:
             if len(e["vector"]) == first_dim:
                 valid_embeddings.append(e)
-            else:
-                # Log or skip incompatible dimension
-                pass
         
         self._meta = valid_embeddings
         if not valid_embeddings:
@@ -74,21 +82,17 @@ class FacePipeline:
         index.add(vectors)
         self.index = index
 
-    # ── Persistent FAISS Storage ────────────────────────────────
-
     def _index_dir(self) -> Path:
         d = self.settings.base_dir / "storage" / "faiss"
         d.mkdir(parents=True, exist_ok=True)
         return d
 
     def save_index(self) -> None:
-        """Persist FAISS index + metadata to disk."""
         if self.index is None or not self._meta:
             return
         idx_dir = self._index_dir()
         try:
             faiss.write_index(self.index, str(idx_dir / "face.index"))
-            # Save metadata (without the numpy vectors — those live in the index)
             serializable = []
             for m in self._meta:
                 entry = {k: v for k, v in m.items() if k != "vector"}
@@ -99,7 +103,6 @@ class FacePipeline:
             logger.error("Failed to save FAISS index: %s", e)
 
     def load_index(self) -> bool:
-        """Load persisted FAISS index + metadata from disk. Returns True if successful."""
         idx_dir = self._index_dir()
         idx_path = idx_dir / "face.index"
         meta_path = idx_dir / "meta.json"
@@ -109,7 +112,7 @@ class FacePipeline:
             self.index = faiss.read_index(str(idx_path))
             raw_meta = json.loads(meta_path.read_text(encoding="utf-8"))
             self._meta = raw_meta
-            self._vectors = None  # reconstructed from FAISS if needed
+            self._vectors = None
             logger.info("FAISS index loaded from disk (%d vectors)", self.index.ntotal)
             return True
         except Exception as e:
@@ -119,7 +122,6 @@ class FacePipeline:
             return False
 
     def invalidate_disk_index(self) -> None:
-        """Delete persisted index when the registry changes."""
         idx_dir = self._index_dir()
         for f in ("face.index", "meta.json"):
             p = idx_dir / f
@@ -131,25 +133,33 @@ class FacePipeline:
         norms = np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-6
         return vectors / norms
 
-    def analyze_face(self, image_bgr: np.ndarray) -> list[RecognitionMatch]:
+    def analyze_face(self, image_bgr: np.ndarray, is_enhanced: bool = False) -> list[RecognitionMatch]:
         detected_faces = self.detector.detect(image_bgr)
         results: list[RecognitionMatch] = []
         for face in detected_faces:
+            face_crop = self.detector.align(image_bgr, face)
+            
+            # Embed
             emb_res = self.embedder.extract(image_bgr, face)
             if emb_res is None:
                 continue
 
             match_data = self._match_and_find(emb_res)
 
-            # If unknown, try horizontal flip (mirroring robustness)
+            # Mirror fallback
             if match_data["is_unknown"]:
-                face_img = self.detector.align(image_bgr, face)
-                flipped = cv2.flip(face_img, 1)
+                flipped = cv2.flip(face_crop, 1)
                 emb_flipped = self.embedder.extract(flipped)
                 if emb_flipped:
                     match_flipped = self._match_and_find(emb_flipped)
                     if not match_flipped["is_unknown"]:
                         match_data = match_flipped
+                        
+            # Analyze Emotion
+            mood, mood_scores = self.emotion_detector.detect(face_crop)
+            
+            # Analyze Liveness
+            liveness_result = self.liveness_detector.score(face_crop)
 
             results.append(
                 RecognitionMatch(
@@ -160,7 +170,7 @@ class FacePipeline:
                     distance=match_data["distance"],
                     is_unknown=match_data["is_unknown"],
                     bbox={"x1": int(face.bbox[0]), "y1": int(face.bbox[1]), "x2": int(face.bbox[2]), "y2": int(face.bbox[3])},
-                    quality_score=float(face_quality(self.detector.align(image_bgr, face))),
+                    quality_score=float(face_quality(face_crop)),
                     blur_score=float(blur_score(image_bgr)),
                     low_light_score=float(low_light_score(image_bgr)),
                     embedding_hash=match_data["embedding_hash"],
@@ -168,12 +178,23 @@ class FacePipeline:
                     title=match_data["title"] if not match_data["is_unknown"] else None,
                     email=match_data["email"] if not match_data["is_unknown"] else None,
                     phone=match_data["phone"] if not match_data["is_unknown"] else None,
+                    mood=mood,
+                    mood_scores=mood_scores,
+                    liveness_score=liveness_result["liveness_score"],
+                    liveness_suspicious=liveness_result["is_suspicious"],
+                    is_enhanced=is_enhanced,
                 )
             )
         return results
 
+    def analyze_face_enhanced(self, image_bgr: np.ndarray) -> list[RecognitionMatch]:
+        """Auto-enhances if low light is detected, then analyzes."""
+        if self.enhancer.is_low_light(image_bgr):
+            enhanced = self.enhancer.enhance(image_bgr)
+            return self.analyze_face(enhanced, is_enhanced=True)
+        return self.analyze_face(image_bgr, is_enhanced=False)
+
     def _match_and_find(self, emb_res: Any) -> dict[str, Any]:
-        """Helper to match a single embedding against the registry."""
         res = {
             "person_id": None, "person_code": None, "full_name": "Unknown",
             "confidence": 0.0, "distance": 1.0, "is_unknown": True,
@@ -194,7 +215,6 @@ class FacePipeline:
                     
                     threshold = self.settings.recognition_threshold
                     if self.embedder.model_name == "opencv_histogram":
-                        # Robust LBP+HOG (6x6) works well at 0.82
                         threshold = max(threshold, 0.82)
                         
                     res["confidence"] = max(0.0, min(1.0, best_score))
@@ -212,22 +232,3 @@ class FacePipeline:
                     print(f"Error searching index: {e}")
         return res
 
-    def draw(self, image_bgr: np.ndarray, matches: list[RecognitionMatch]) -> np.ndarray:
-        out = image_bgr.copy()
-        for m in matches:
-            box = m.bbox
-            x1, y1, x2, y2 = box["x1"], box["y1"], box["x2"], box["y2"]
-            color = (0, 255, 0) if not m.is_unknown else (0, 165, 255)
-            cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
-            
-            label = f"{m.full_name}"
-            if not m.is_unknown and m.person_code:
-                label += f" ({m.person_code})"
-            label += f" | {m.confidence * 100:.1f}%"
-            
-            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
-            # Draw solid background for text
-            cv2.rectangle(out, (x1, max(0, y1 - th - 10)), (x1 + tw + 10, max(0, y1)), color, -1)
-            # Draw text in white over the solid background
-            cv2.putText(out, label, (x1 + 5, max(0, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
-        return out

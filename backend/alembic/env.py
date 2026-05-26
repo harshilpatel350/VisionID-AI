@@ -9,6 +9,8 @@ from app.models.user import User
 from app.models.dataset import Dataset
 from app.models.face import Person, FaceSample, FaceEmbedding
 from app.models.recognition import RecognitionLog, AuditLog
+from app.models.unknown import UnknownFaceLog
+from app.models.mood import MoodRecord
 
 config = context.config
 fileConfig(config.config_file_name)

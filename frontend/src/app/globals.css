@@ -3,12 +3,13 @@
 @tailwind utilities;
 
 :root {
-  --bg: 10 12 22;
-  --panel: 17 20 34;
-  --panel-2: 21 26 44;
-  --text: 236 240 255;
-  --muted: 148 163 184;
-  --accent: 99 102 241;
+  --bg: 10 5 20; /* Deep Violet */
+  --panel: 20 12 38; /* Slightly lighter violet */
+  --panel-2: 32 20 56; /* Lavender hint */
+  --text: 240 238 255; /* Soft white/lavender text */
+  --muted: 156 142 196; /* Muted lavender */
+  --accent: 180 165 245; /* Bright lavender accent */
+  --primary: 138 99 242; /* Primary purple */
 }
 
 html, body {
@@ -18,9 +19,9 @@ html, body {
 body {
   color: rgb(var(--text));
   background:
-    radial-gradient(circle at top left, rgba(59,130,246,.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(168,85,247,.14), transparent 26%),
-    linear-gradient(180deg, rgb(7, 9, 18), rgb(7, 11, 22));
+    radial-gradient(circle at top left, rgba(138, 99, 242, 0.15), transparent 28%),
+    radial-gradient(circle at top right, rgba(180, 165, 245, 0.1), transparent 26%),
+    linear-gradient(180deg, rgb(var(--bg)), rgb(5, 2, 10));
 }
 
 * {
@@ -28,17 +29,20 @@ body {
 }
 
 ::selection {
-  background: rgba(99, 102, 241, .35);
+  background: rgba(138, 99, 242, 0.35);
 }
 
 @layer components {
   .glass {
-    @apply border border-white/10 bg-white/5 backdrop-blur-xl shadow-glow;
+    @apply border border-white/5 bg-white/5 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_20px_80px_rgba(0,0,0,0.5)];
+  }
+  .glass-violet {
+    @apply border border-[rgb(var(--primary))]/20 bg-[rgb(var(--panel))]/60 backdrop-blur-xl shadow-[0_0_0_1px_rgba(138,99,242,0.1),0_8px_32px_rgba(0,0,0,0.4)];
   }
   .card-title {
-    @apply text-sm font-medium text-slate-200/90;
+    @apply text-sm font-medium text-slate-100;
   }
   .card-subtitle {
-    @apply text-xs text-slate-400;
+    @apply text-xs text-[rgb(var(--muted))];
   }
 }

@@ -73,6 +73,26 @@ class FaceService:
         db.add(embedding)
         return sample
 
+    def quality_check(self, image_bytes: bytes) -> dict:
+        from app.ai.quality import comprehensive_quality
+        frame = self._load_image(image_bytes)
+        detected_faces = self.pipeline.detector.detect(frame)
+        if not detected_faces:
+            raise HTTPException(status_code=400, detail="No face detected in image")
+        if len(detected_faces) > 1:
+            raise HTTPException(status_code=400, detail="Multiple faces detected, please upload an image with only one face")
+            
+        face_crop = self.pipeline.detector.align(frame, detected_faces[0])
+        report = comprehensive_quality(face_crop, frame.shape)
+        return {
+            "blur": report.blur,
+            "brightness": report.brightness,
+            "contrast": report.contrast,
+            "size_score": report.size_score,
+            "overall": report.overall,
+            "is_valid": report.is_valid
+        }
+
     def create_person(self, db: Session, created_by: int | None, data: dict[str, Any], files: list[UploadFile]) -> Person:
         person_code = f"PID-{uuid4().hex[:10].upper()}"
         person = Person(
@@ -82,6 +102,9 @@ class FaceService:
             phone=data.get("phone"),
             department=data.get("department"),
             title=data.get("title"),
+            age=data.get("age"),
+            gender=data.get("gender"),
+            tags=data.get("tags"),
             notes=data.get("notes"),
             created_by=created_by,
             embedding_model=self.embedder.model_name,
@@ -118,8 +141,6 @@ class FaceService:
         if new_emb is None:
             return
             
-        # Optimization: Build temporary index to find duplicates rather than O(N) loop
-        # For small numbers of people, loop is fine, but this scales better
         all_people = db.scalars(select(Person).where(Person.id != new_person.id, Person.is_active.is_(True))).all()
         if not all_people:
             return
@@ -129,7 +150,6 @@ class FaceService:
             emb = self._person_average_embedding(db, p.id)
             if emb is None:
                 continue
-            # Skip if embedding dimensions don't match (different models)
             if new_emb.shape[0] != emb.shape[0]:
                 continue
             sim = float(np.dot(new_emb, emb))
@@ -200,6 +220,9 @@ class FaceService:
             "phone": p.phone,
             "department": p.department,
             "title": p.title,
+            "age": p.age,
+            "gender": p.gender,
+            "tags": p.tags,
             "notes": p.notes,
             "primary_image_path": p.primary_image_path,
             "is_active": p.is_active,

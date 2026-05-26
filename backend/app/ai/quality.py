@@ -1,6 +1,16 @@
 from __future__ import annotations
+from dataclasses import dataclass
 import cv2
 import numpy as np
+
+@dataclass
+class QualityReport:
+    blur: float
+    brightness: float
+    contrast: float
+    size_score: float
+    overall: float
+    is_valid: bool
 
 def blur_score(image_bgr: np.ndarray) -> float:
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
@@ -12,8 +22,43 @@ def low_light_score(image_bgr: np.ndarray) -> float:
     mean = gray.mean() / 255.0
     return float(max(0.0, 1.0 - mean))
 
-def face_quality(image_bgr: np.ndarray) -> float:
-    b = blur_score(image_bgr)
-    l = 1.0 - low_light_score(image_bgr)
-    contrast = float(min(1.0, cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY).std() / 64.0))
+def face_quality(face_crop_bgr: np.ndarray) -> float:
+    if face_crop_bgr.size == 0:
+        return 0.0
+    b = blur_score(face_crop_bgr)
+    l = 1.0 - low_light_score(face_crop_bgr)
+    contrast = float(min(1.0, cv2.cvtColor(face_crop_bgr, cv2.COLOR_BGR2GRAY).std() / 64.0))
     return float(max(0.0, min(1.0, 0.45 * b + 0.35 * l + 0.20 * contrast)))
+
+def size_score(face_crop_bgr: np.ndarray, frame_shape: tuple[int, int, int]) -> float:
+    """Score based on how much of the frame the face takes up. Tiny faces are bad."""
+    if face_crop_bgr.size == 0:
+        return 0.0
+    h, w = face_crop_bgr.shape[:2]
+    fh, fw = frame_shape[:2]
+    ratio = (h * w) / float(fh * fw + 1e-6)
+    # If face takes > 5% of frame, it's good size
+    score = min(1.0, ratio / 0.05)
+    return score
+
+def comprehensive_quality(face_crop_bgr: np.ndarray, frame_shape: tuple[int, int, int], min_score: float = 0.35) -> QualityReport:
+    if face_crop_bgr.size == 0:
+        return QualityReport(0.0, 0.0, 0.0, 0.0, 0.0, False)
+        
+    b = blur_score(face_crop_bgr)
+    brightness = 1.0 - low_light_score(face_crop_bgr)
+    contrast = float(min(1.0, cv2.cvtColor(face_crop_bgr, cv2.COLOR_BGR2GRAY).std() / 64.0))
+    sz = size_score(face_crop_bgr, frame_shape)
+    
+    # Weight size and blur heavily
+    overall = float(max(0.0, min(1.0, 0.4 * b + 0.2 * brightness + 0.1 * contrast + 0.3 * sz)))
+    is_valid = overall >= min_score
+    
+    return QualityReport(
+        blur=b,
+        brightness=brightness,
+        contrast=contrast,
+        size_score=sz,
+        overall=overall,
+        is_valid=is_valid
+    )

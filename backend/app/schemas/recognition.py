@@ -13,6 +13,10 @@ class RecognitionLogOut(BaseModel):
     frame_index: int
     bounding_box_json: dict[str, Any] | None
     embedding_hash: str | None
+    mood: str | None = None
+    liveness_score: float | None = None
+    tracking_id: int | None = None
+    is_enhanced: bool = False
     occurred_at: str | None
 
 class DashboardStats(BaseModel):

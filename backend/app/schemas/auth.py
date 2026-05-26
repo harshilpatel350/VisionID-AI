@@ -5,11 +5,11 @@ class ORMBase(BaseModel):
 
 class RegisterRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=180)
-    email: EmailStr
+    username: str = Field(min_length=3, max_length=255, pattern=r"^[a-zA-Z0-9_-]+$")
     password: str = Field(min_length=8, max_length=128)
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    username: str
     password: str
 
 class TokenResponse(BaseModel):
@@ -20,7 +20,7 @@ class TokenResponse(BaseModel):
 class UserOut(ORMBase):
     id: int
     full_name: str
-    email: EmailStr
+    username: str
     role: str
     is_active: bool
 

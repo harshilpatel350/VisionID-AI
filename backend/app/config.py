@@ -35,7 +35,7 @@ class Settings(BaseModel):
     login_lockout_minutes: int = 15
 
     # ── Database ────────────────────────────────────────────────
-    database_url: str = "mysql+pymysql://root:root@127.0.0.1:3306/visionid_ai?charset=utf8mb4"
+    database_url: str = "sqlite:///storage/visionid.db"
     db_pool_size: int = 10
     db_max_overflow: int = 20
     db_pool_timeout: int = 30
@@ -56,6 +56,7 @@ class Settings(BaseModel):
     face_dir: str = "storage/faces"
     report_dir: str = "storage/reports"
     log_dir: str = "storage/logs"
+    unknown_face_dir: str = "storage/unknowns"
 
     # ── Upload limits ───────────────────────────────────────────
     max_upload_size_mb: int = 10
@@ -63,13 +64,19 @@ class Settings(BaseModel):
     allowed_image_extensions: list[str] = Field(default_factory=lambda: _IMAGE_EXTENSIONS)
     allowed_video_extensions: list[str] = Field(default_factory=lambda: _VIDEO_EXTENSIONS)
 
-    # ── Recognition tuning ──────────────────────────────────────
+    # ── Recognition & AI tuning ─────────────────────────────────
     recognition_cooldown_seconds: int = 30
     recognition_threshold: float = 0.45
     duplicate_similarity_threshold: float = 0.92
     quality_min_score: float = 0.35
     frame_skip: int = 3
     max_batch_frames: int = 25
+    low_light_threshold: int = 60
+    enhancement_gamma: float = 1.2
+    enhancement_clip_limit: float = 2.0
+    liveness_enabled: bool = True
+    liveness_threshold: float = 0.5
+    emotion_enabled: bool = True
 
     # ── Rate limiting ───────────────────────────────────────────
     rate_limit_per_minute: int = 240

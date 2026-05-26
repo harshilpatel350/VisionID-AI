@@ -11,6 +11,9 @@ class PersonCreate(BaseModel):
     phone: str | None = None
     department: str | None = None
     title: str | None = None
+    age: int | None = None
+    gender: str | None = None
+    tags: str | None = None
     notes: str | None = None
 
 class PersonUpdate(PersonCreate):
@@ -24,6 +27,9 @@ class PersonOut(ORMBase):
     phone: str | None
     department: str | None
     title: str | None
+    age: int | None = None
+    gender: str | None = None
+    tags: str | None = None
     notes: str | None
     primary_image_path: str | None
     is_active: bool

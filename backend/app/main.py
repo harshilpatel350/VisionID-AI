@@ -14,6 +14,9 @@ from app.api.routes.datasets import router as datasets_router
 from app.api.routes.analytics import router as analytics_router
 from app.api.routes.exports import router as exports_router
 from app.api.routes.admin import router as admin_router
+from app.api.routes.group import router as group_router
+from app.api.routes.unknown import router as unknown_router
+from app.api.routes.mood import router as mood_router
 from app.config import load_settings
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware, RateLimitMiddleware
@@ -36,14 +39,14 @@ def seed_admin_user() -> None:
         if count == 0:
             admin = User(
                 full_name="VisionID Admin",
-                email="admin@visionid.ai",
+                username="admin",
                 password_hash=hash_password("Admin@12345"),
                 role="admin",
                 is_active=True,
             )
             db.add(admin)
             db.commit()
-            logger.info("Seeded default admin user: admin@visionid.ai / Admin@12345")
+            logger.info("Seeded default admin user: admin / Admin@12345")
     except Exception as e:
         logger.error("Failed to seed default admin user: %s", e)
         db.rollback()
@@ -108,6 +111,9 @@ app.include_router(datasets_router, prefix=settings.api_prefix)
 app.include_router(analytics_router, prefix=settings.api_prefix)
 app.include_router(exports_router, prefix=settings.api_prefix)
 app.include_router(admin_router, prefix=settings.api_prefix)
+app.include_router(group_router, prefix=settings.api_prefix)
+app.include_router(unknown_router, prefix=settings.api_prefix)
+app.include_router(mood_router, prefix=settings.api_prefix)
 
 
 @app.get("/")

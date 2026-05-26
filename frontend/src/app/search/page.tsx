@@ -21,12 +21,12 @@ export default function SearchPage() {
 
   return (
     <AppShell>
-      <Card>
-        <CardTitle>Search Console</CardTitle>
+      <Card className="glass-violet border-primary/20">
+        <CardTitle className="text-white">Search Console</CardTitle>
         <CardContent className="mt-4 space-y-4">
-          <Input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          <Button onClick={submit}>Search identity</Button>
-          <pre className="overflow-auto rounded-2xl border border-white/10 bg-black/30 p-4 text-xs text-slate-200">{JSON.stringify(result, null, 2)}</pre>
+          <Input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="bg-black/20 border-white/10 focus-visible:ring-primary" />
+          <Button onClick={submit} className="bg-primary hover:bg-primary/90 text-white shadow-glow-violet">Search identity</Button>
+          <pre className="overflow-auto rounded-2xl border border-primary/20 bg-black/30 p-4 text-xs text-slate-200">{JSON.stringify(result, null, 2)}</pre>
         </CardContent>
       </Card>
     </AppShell>

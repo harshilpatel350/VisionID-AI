@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { FaceCard } from "@/components/face-card";
 
 export default function RegistryPage() {
-  const persons = useQuery({ queryKey: ["persons"], queryFn: async () => (await api.get("/faces/persons")).data });
-  const [form, setForm] = useState({ full_name: "", email: "", phone: "", department: "", title: "", notes: "" });
+    const persons = useQuery({ queryKey: ["persons"], queryFn: async () => (await api.get("/faces/persons")).data });
+  const [form, setForm] = useState({ full_name: "", email: "", phone: "", department: "", title: "", age: "", gender: "", tags: "", notes: "" });
   const [files, setFiles] = useState<FileList | null>(null);
   const [message, setMessage] = useState("");
   
@@ -102,7 +102,7 @@ export default function RegistryPage() {
     try {
       await api.post("/faces/persons", fd);
       setMessage("Person registered successfully");
-      setForm({ full_name: "", email: "", phone: "", department: "", title: "", notes: "" });
+      setForm({ full_name: "", email: "", phone: "", department: "", title: "", age: "", gender: "", tags: "", notes: "" });
       setFiles(null);
       clearCapture();
       persons.refetch();
@@ -122,41 +122,59 @@ export default function RegistryPage() {
 
   return (
     <AppShell>
-      <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-        <Card>
-          <CardTitle>Add Person</CardTitle>
+      <div className="grid gap-6 xl:grid-cols-[450px_1fr]">
+        <Card className="glass-violet border-primary/20">
+          <CardTitle className="text-white">Register Person</CardTitle>
           <CardContent className="mt-4">
             <form className="space-y-4" onSubmit={submit}>
               <div className="space-y-2">
-                <Input placeholder="Full name *" required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
-                <Input placeholder="Email (optional)" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-                <Input placeholder="Phone (optional)" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                <Input placeholder="Department (optional)" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
-                <Input placeholder="Title (optional)" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-                <Input placeholder="Notes (optional)" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                <Input placeholder="Full name *" required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="bg-black/20 border-white/10 focus-visible:ring-primary" />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input placeholder="Email (optional)" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-black/20 border-white/10 focus-visible:ring-primary" />
+                  <Input placeholder="Phone (optional)" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="bg-black/20 border-white/10 focus-visible:ring-primary" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input placeholder="Department" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className="bg-black/20 border-white/10 focus-visible:ring-primary" />
+                  <Input placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="bg-black/20 border-white/10 focus-visible:ring-primary" />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Input placeholder="Age" type="number" value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} className="bg-black/20 border-white/10 focus-visible:ring-primary" />
+                  <select 
+                    className="flex h-9 w-full rounded-md border border-white/10 bg-black/20 px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 text-white"
+                    value={form.gender} 
+                    onChange={(e) => setForm({ ...form, gender: e.target.value })}
+                  >
+                    <option value="" disabled className="bg-[rgb(var(--panel))] text-white">Gender</option>
+                    <option value="male" className="bg-[rgb(var(--panel))] text-white">Male</option>
+                    <option value="female" className="bg-[rgb(var(--panel))] text-white">Female</option>
+                    <option value="other" className="bg-[rgb(var(--panel))] text-white">Other</option>
+                  </select>
+                  <Input placeholder="Tags (VIP, Staff...)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} className="bg-black/20 border-white/10 focus-visible:ring-primary" />
+                </div>
+                <Input placeholder="Notes (optional)" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="bg-black/20 border-white/10 focus-visible:ring-primary" />
               </div>
 
               <div className="space-y-2">
                 <div className="flex gap-2">
-                  <Button type="button" variant={isCameraOn ? "destructive" : "secondary"} className="flex-1" onClick={toggleCamera}>
+                  <Button type="button" variant={isCameraOn ? "destructive" : "secondary"} className={`flex-1 ${isCameraOn ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30' : 'bg-primary/20 text-accent hover:bg-primary/30 border border-primary/30'}`} onClick={toggleCamera}>
                     {isCameraOn ? "Stop Camera" : "📸 Use Camera"}
                   </Button>
                   <div className="flex-1">
-                    <Input type="file" accept="image/*" multiple onChange={(e) => setFiles(e.target.files)} className="cursor-pointer" />
+                    <Input type="file" accept="image/*" multiple onChange={(e) => setFiles(e.target.files)} className="cursor-pointer bg-black/20 border-white/10" />
                   </div>
                 </div>
 
-                <div className={`relative overflow-hidden rounded-xl bg-black border border-white/10 ${isCameraOn ? "block" : "hidden"}`}>
+                <div className={`relative overflow-hidden rounded-xl bg-black border border-primary/20 ${isCameraOn ? "block" : "hidden"}`}>
                   <video ref={videoRef} autoPlay playsInline className="aspect-video w-full object-cover" />
                   <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent flex justify-center">
-                    <Button type="button" variant="default" className="rounded-full shadow-lg" onClick={capturePhoto}>
+                    <Button type="button" variant="default" className="rounded-full shadow-glow-violet bg-primary hover:bg-primary/90 text-white" onClick={capturePhoto}>
                       Snap Photo
                     </Button>
                   </div>
                 </div>
 
                 {capturedUrl && !isCameraOn && (
-                  <div className="relative group overflow-hidden rounded-xl border border-white/10">
+                  <div className="relative group overflow-hidden rounded-xl border border-primary/20">
                     <img src={capturedUrl} alt="Captured" className="aspect-video w-full object-cover" />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <Button type="button" variant="destructive" onClick={clearCapture}>Remove Photo</Button>
@@ -165,7 +183,7 @@ export default function RegistryPage() {
                 )}
               </div>
 
-              <Button className="w-full" type="submit">Register Face</Button>
+              <Button className="w-full bg-primary hover:bg-primary/90 text-white shadow-glow-violet" type="submit">Register Face</Button>
               {message ? (
                 <div className={`text-sm ${message.includes("Error") ? "text-red-400" : "text-emerald-300"}`}>
                   {message}
@@ -175,8 +193,8 @@ export default function RegistryPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardTitle>Face Registry</CardTitle>
+        <Card className="glass-violet border-primary/20">
+          <CardTitle className="text-white">Face Registry</CardTitle>
           <CardContent className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-2">
             {(persons.data ?? []).map((person: any) => (
               <FaceCard key={person.id} person={person} onDelete={deletePerson} />

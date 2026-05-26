@@ -12,24 +12,24 @@ export default function AdminPage() {
   return (
     <AppShell>
       <div className="grid gap-6 xl:grid-cols-2">
-        <Card>
-          <CardTitle>User Management</CardTitle>
+        <Card className="glass-violet border-primary/20">
+          <CardTitle className="text-white">User Management</CardTitle>
           <CardContent className="mt-4 space-y-3">
             {(users.data ?? []).map((u: any) => (
-              <div key={u.id} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm">
-                <div className="font-medium">{u.full_name}</div>
-                <div className="text-slate-400">{u.email} • {u.role}</div>
+              <div key={u.id} className="rounded-2xl border border-white/5 bg-black/20 p-4 text-sm hover:border-primary/30 transition-colors">
+                <div className="font-medium text-white">{u.full_name}</div>
+                <div className="text-muted">{u.username ?? u.email} • <span className="text-primary">{u.role}</span></div>
               </div>
             ))}
           </CardContent>
         </Card>
-        <Card>
-          <CardTitle>Audit Logs</CardTitle>
+        <Card className="glass-violet border-primary/20">
+          <CardTitle className="text-white">Audit Logs</CardTitle>
           <CardContent className="mt-4 space-y-3">
             {(audit.data ?? []).slice(0, 12).map((a: any) => (
-              <div key={a.id} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm">
-                <div className="font-medium">{a.action}</div>
-                <div className="text-slate-400">{a.entity_type} #{a.entity_id ?? "-"}</div>
+              <div key={a.id} className="rounded-2xl border border-white/5 bg-black/20 p-4 text-sm hover:border-primary/30 transition-colors">
+                <div className="font-medium text-white">{a.action}</div>
+                <div className="text-muted">{a.entity_type} #{a.entity_id ?? "-"}</div>
               </div>
             ))}
           </CardContent>

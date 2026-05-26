@@ -70,7 +70,20 @@ async def unhandled_exception_handler(_request: Request, exc: Exception) -> JSON
     return _error_envelope(500, "INTERNAL_ERROR", "An unexpected error occurred. Please try again.")
 
 
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+
+async def sqlalchemy_exception_handler(_request: Request, exc: SQLAlchemyError) -> JSONResponse:
+    logger.error(
+        "Database Error | request_id=%s\n%s",
+        current_request_id(),
+        traceback.format_exc(),
+    )
+    if isinstance(exc, IntegrityError):
+        return _error_envelope(409, "DB_CONFLICT", "A database conflict occurred (e.g. unique constraint violation).")
+    return _error_envelope(500, "DB_ERROR", "A database error occurred. Please try again.")
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppException, app_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler) # type: ignore[arg-type]
     app.add_exception_handler(Exception, unhandled_exception_handler)  # type: ignore[arg-type]

@@ -20,6 +20,10 @@ class RecognitionLog(Base):
     frame_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     bounding_box_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     embedding_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mood: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    liveness_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tracking_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_enhanced: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
