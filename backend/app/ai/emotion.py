@@ -49,14 +49,20 @@ class EmotionDetector:
         total = sum(score.values())
         return {k: v / total for k, v in score.items()}
 
-    def _inject_confused(self, emotions: dict[str, float]) -> tuple[str, dict[str, float]]:
+    def _inject_confused(
+        self,
+        emotions: dict[str, float],
+        allow_confused: bool = True,
+        min_gap: float = 0.08,
+        max_top: float = 0.55
+    ) -> tuple[str, dict[str, float]]:
         if not emotions:
             return "neutral", {"neutral": 1.0}
         items = sorted(emotions.items(), key=lambda kv: kv[1], reverse=True)
         top_name, top_score = items[0]
-        if len(items) > 1:
+        if allow_confused and len(items) > 1:
             second_score = items[1][1]
-            if top_score - second_score < 0.08:
+            if top_score < max_top and (top_score - second_score) < min_gap:
                 emotions = dict(emotions)
                 emotions["confused"] = max(0.05, (top_score + second_score) / 2.0)
                 total = sum(emotions.values()) + 1e-6
@@ -81,7 +87,7 @@ class EmotionDetector:
             if emotions:
                 total = sum(emotions.values()) + 1e-6
                 emotions = {k: float(v) / total for k, v in emotions.items()}
-                return self._inject_confused(emotions)
+                return self._inject_confused(emotions, allow_confused=not fast)
         except Exception as e:
             logger.debug("DeepFace emotion failed: %s", e)
         return None
@@ -107,9 +113,9 @@ class EmotionDetector:
                 
                 if result and len(result) > 0:
                     emotions = result[0]["emotions"]
-                    return self._inject_confused(emotions)
+                    return self._inject_confused(emotions, allow_confused=not fast)
             except Exception as e:
                 logger.debug("FER detection failed, using fallback: %s", e)
                 
         emotions = self._fallback_emotion(face_crop_bgr)
-        return self._inject_confused(emotions)
+        return self._inject_confused(emotions, allow_confused=not fast)

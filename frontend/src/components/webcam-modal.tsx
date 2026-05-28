@@ -139,6 +139,7 @@ export function WebcamModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [lowLightActive, setLowLightActive] = useState(false);
   const [enhancementActive, setEnhancementActive] = useState(false);
+  const [videoAspect, setVideoAspect] = useState(16 / 9);
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
@@ -357,34 +358,42 @@ export function WebcamModal() {
       <DialogContent className="max-w-5xl overflow-hidden p-0 bg-[rgb(var(--bg))]/95 backdrop-blur-xl border-primary/20 shadow-glow-violet-lg">
         <div className="grid gap-0 md:grid-cols-[1fr_350px] min-h-[500px]">
           <div className="relative bg-black flex items-center justify-center p-4">
-            {/* Raw camera feed always visible */}
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              className="aspect-video w-full rounded-lg bg-black object-cover shadow-2xl ring-1 ring-white/10"
-            />
-            {/* Overlay canvas for Live AI bounding boxes */}
-            <canvas
-              ref={overlayRef}
-              className={`absolute inset-0 aspect-video w-full h-full rounded-lg object-contain pointer-events-none ${isLiveActive ? "block" : "hidden"} p-4`}
-            />
-            {/* Annotated frame from server for photo captures */}
-            <img
-              ref={annotatedRef}
-              alt="Annotated webcam feed"
-              className={`absolute inset-0 aspect-video w-full h-full rounded-lg bg-black object-contain ${showAnnotated && !isLiveActive ? "block" : "hidden"} p-4`}
-            />
-            <canvas ref={canvasRef} className="hidden" />
-            {/* Face count badge */}
-            {showAnnotated && logs.length > 0 && (
-              <div className="absolute left-6 top-6 flex items-center gap-2 rounded-lg bg-black/80 px-4 py-2 text-sm font-medium text-white backdrop-blur shadow-lg ring-1 ring-white/20">
-                <span className={`inline-block h-2.5 w-2.5 rounded-full ${isLiveActive ? "bg-green-500 animate-pulse" : "bg-blue-500"}`} />
-                {logs.length} face{logs.length !== 1 ? "s" : ""} detected
-              </div>
-            )}
+            <div className="relative w-full" style={{ aspectRatio: videoAspect }}>
+              {/* Raw camera feed always visible */}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                onLoadedMetadata={() => {
+                  const v = videoRef.current;
+                  if (v && v.videoWidth && v.videoHeight) {
+                    setVideoAspect(v.videoWidth / v.videoHeight);
+                  }
+                }}
+                className="absolute inset-0 h-full w-full rounded-lg bg-black object-cover shadow-2xl ring-1 ring-white/10"
+              />
+              {/* Overlay canvas for Live AI bounding boxes */}
+              <canvas
+                ref={overlayRef}
+                className={`absolute inset-0 h-full w-full rounded-lg pointer-events-none ${isLiveActive ? "block" : "hidden"}`}
+              />
+              {/* Annotated frame from server for photo captures */}
+              <img
+                ref={annotatedRef}
+                alt="Annotated webcam feed"
+                className={`absolute inset-0 h-full w-full rounded-lg bg-black object-cover ${showAnnotated && !isLiveActive ? "block" : "hidden"}`}
+              />
+              <canvas ref={canvasRef} className="hidden" />
+              {/* Face count badge */}
+              {showAnnotated && logs.length > 0 && (
+                <div className="absolute left-4 top-4 flex items-center gap-2 rounded-lg bg-black/80 px-4 py-2 text-sm font-medium text-white backdrop-blur shadow-lg ring-1 ring-white/20">
+                  <span className={`inline-block h-2.5 w-2.5 rounded-full ${isLiveActive ? "bg-green-500 animate-pulse" : "bg-blue-500"}`} />
+                  {logs.length} face{logs.length !== 1 ? "s" : ""} detected
+                </div>
+              )}
+            </div>
           </div>
-          <div className="flex flex-col h-full bg-[rgb(var(--panel))]/40 border-l border-primary/20">
+          <div className="flex flex-col h-full bg-[rgb(var(--panel))]/80 border-l border-primary/20">
             <div className="p-4 border-b border-primary/20 glass-violet">
               <DialogTitle className="text-lg font-semibold tracking-tight text-white">Recognition Stream</DialogTitle>
               <div className="flex items-center justify-between mt-2">
