@@ -160,6 +160,12 @@ def load_settings() -> Settings:
         data = json.loads(config_path.read_text(encoding="utf-8"))
     settings = Settings(**data)
     _ensure_secure_key(settings)
+    if settings.database_url.startswith("sqlite:///"):
+        path_part = settings.database_url[len("sqlite:///") :]
+        db_path = Path(path_part)
+        if not db_path.is_absolute():
+            resolved = (settings.base_dir / db_path).resolve()
+            settings.database_url = f"sqlite:///{resolved.as_posix()}"
     for d in (
         settings.abs_upload_dir,
         settings.abs_face_dir,

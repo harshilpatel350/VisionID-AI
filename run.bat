@@ -50,12 +50,27 @@ if not exist "frontend\node_modules" (
     echo %GREEN%[OK] Frontend node_modules found.%RESET%
 )
 
+:: 2.5 Run DB Migrations
+echo.
+echo %YELLOW%[2.5/3] Applying Database Migrations...%RESET%
+if exist "backend\venv\Scripts\alembic.exe" (
+    set "PYTHONPATH=%~dp0backend"
+    call backend\venv\Scripts\alembic.exe -c backend\alembic.ini upgrade head
+    if errorlevel 1 (
+        echo %RED%[WARN] Alembic migration failed. You can re-run: backend\venv\Scripts\alembic.exe -c backend\alembic.ini upgrade head%RESET%
+    ) else (
+        echo %GREEN%[OK] Database schema is up to date.%RESET%
+    )
+) else (
+    echo %RED%[WARN] Alembic not found in venv. Skipping migrations.%RESET%
+)
+
 :: 3. Start Services
 echo.
 echo %YELLOW%[3/3] Starting Services...%RESET%
 
 echo %GREEN%[START] Booting Backend Server (localhost:8001)...%RESET%
-start "VisionID AI Backend" /D "%~dp0backend" cmd /k "title VisionID AI - Backend && venv\Scripts\python.exe -m app.main"
+start "VisionID AI Backend" /D "%~dp0" cmd /k "title VisionID AI - Backend && set PYTHONPATH=%~dp0backend && backend\venv\Scripts\python.exe -m app.main"
 
 :: Wait 3 seconds for backend to start up
 timeout /t 3 /nobreak >nul

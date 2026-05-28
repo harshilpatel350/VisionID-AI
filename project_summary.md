@@ -51,6 +51,9 @@ These are the most impactful points you should highlight on your resume. They de
 ### 4. Interactive Image Workbench
 *   **The Optimization:** Built a drag-and-drop Recognition Studio overlaying bounding boxes onto uploaded images in percentage coordinates. This workbench provides instant face alignment preview, liveness percentages, mood indicators, and metadata cards, replacing the previous raw JSON output interface.
 
+### 5. Analytics & Export Pipeline
+*   **The Optimization:** Delivered a full analytics and export workflow with server-side filtering, sorting, and pagination metadata, enabling CSV/XLSX data exports for recognition logs, registry entries, and unknown faces.
+
 ---
 
 ## 📝 Ready-to-Use Resume Bullet Points
@@ -67,3 +70,4 @@ Here are templates you can customize and add directly under your "Experience" or
 *   **Database Caching:** Optimized recognition backend throughput by introducing an in-memory caching system for vector indices, eliminating redundant database queries and FAISS rebuilds on every processed frame.
 *   **Role-Based Access Control:** Secured backend API routes with **JWT authentication** and implemented custom role-based access controls (RBAC) to enforce secure administration of user records.
 *   **Premium Futuristic Theme:** Designed a dark-mode **Violet & Lavender** theme incorporating glassmorphism layouts (`glass-violet` panels with tailwind blending) and customized SVG neon glowing accents for an elite, premium UX.
+*   **Analytics & Exports:** Built a filterable recognition timeline with downloadable CSV/XLSX reports for key operational datasets.

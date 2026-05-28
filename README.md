@@ -24,6 +24,7 @@ VisionID AI is a production-grade, local-first face registry and recognition pla
 5. **Group Crowd Analyzer:** Drag-and-drop crowd photos to count total faces, map coordinates, and analyze group mood aggregates.
 6. **Unknown Faces Panel:** Operator review screen to browse unidentified targets that tripped the camera, allowing operators to dismiss logs or register them.
 7. **Emotion Analytics:** Deep analytics on collected emotional data points, visualizing mood distributions and percentages.
+8. **Exports & Filters:** CSV/XLSX exports for recognition logs, registry, and unknowns with timeline filters, sorting, and a log detail drawer.
 
 ---
 
@@ -44,6 +45,7 @@ python -m venv venv
 # Activate virtual environment:
 # Windows: venv\Scripts\activate.bat  |  macOS/Linux: source venv/bin/activate
 pip install -r requirements.txt
+alembic upgrade head
 python -m app.main
 ```
 *Note: SQLite is configured by default. Database tables are generated automatically on startup.*
