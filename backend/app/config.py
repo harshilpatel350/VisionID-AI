@@ -68,15 +68,30 @@ class Settings(BaseModel):
     recognition_cooldown_seconds: int = 30
     recognition_threshold: float = 0.45
     duplicate_similarity_threshold: float = 0.92
+    prevent_duplicate_registration: bool = True
     quality_min_score: float = 0.35
     frame_skip: int = 3
     max_batch_frames: int = 25
     low_light_threshold: int = 60
     enhancement_gamma: float = 1.2
     enhancement_clip_limit: float = 2.0
+    auto_low_light_enhance: bool = True
     liveness_enabled: bool = True
     liveness_threshold: float = 0.5
+    liveness_mode: str = "enhanced"  # light | enhanced
+    liveness_motion_weight: float = 0.3
     emotion_enabled: bool = True
+    emotion_backend: str = "auto"  # fer | deepface | auto
+    emotion_fast_in_live: bool = True
+
+    # ── Snapshot storage ────────────────────────────────────────
+    save_recognition_snapshots: bool = False
+    recognition_snapshot_dir: str = "storage/snapshots/recognitions"
+    save_unknown_snapshots: bool = True
+
+    # ── Unknown similarity ──────────────────────────────────────
+    unknown_similarity_threshold: float = 0.85
+    unknown_similarity_top_k: int = 8
 
     # ── Rate limiting ───────────────────────────────────────────
     rate_limit_per_minute: int = 240
@@ -108,6 +123,14 @@ class Settings(BaseModel):
         return self.base_dir / self.log_dir
 
     @property
+    def abs_unknown_face_dir(self) -> Path:
+        return self.base_dir / self.unknown_face_dir
+
+    @property
+    def abs_recognition_snapshot_dir(self) -> Path:
+        return self.base_dir / self.recognition_snapshot_dir
+
+    @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_size_mb * 1024 * 1024
 
@@ -137,6 +160,13 @@ def load_settings() -> Settings:
         data = json.loads(config_path.read_text(encoding="utf-8"))
     settings = Settings(**data)
     _ensure_secure_key(settings)
-    for d in (settings.abs_upload_dir, settings.abs_face_dir, settings.abs_report_dir, settings.abs_log_dir):
+    for d in (
+        settings.abs_upload_dir,
+        settings.abs_face_dir,
+        settings.abs_report_dir,
+        settings.abs_log_dir,
+        settings.abs_unknown_face_dir,
+        settings.abs_recognition_snapshot_dir,
+    ):
         d.mkdir(parents=True, exist_ok=True)
     return settings

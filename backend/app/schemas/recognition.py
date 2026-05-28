@@ -14,9 +14,15 @@ class RecognitionLogOut(BaseModel):
     bounding_box_json: dict[str, Any] | None
     embedding_hash: str | None
     mood: str | None = None
+    mood_scores_json: dict[str, Any] | None = None
     liveness_score: float | None = None
     tracking_id: int | None = None
     is_enhanced: bool = False
+    snapshot_path: str | None = None
+    quality_score: float | None = None
+    low_light_score: float | None = None
+    pose_score: float | None = None
+    size_score: float | None = None
     occurred_at: str | None
 
 class DashboardStats(BaseModel):
@@ -37,3 +43,6 @@ class AnalyticsOverview(BaseModel):
     confidence_buckets: list[dict[str, Any]]
     source_breakdown: list[dict[str, Any]]
     unknown_trend: list[dict[str, Any]]
+    faces_per_hour: list[dict[str, Any]]
+    mood_distribution: dict[str, int]
+    top_persons: list[dict[str, Any]]

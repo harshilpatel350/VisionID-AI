@@ -8,12 +8,17 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FaceCard } from "@/components/face-card";
+import { Badge } from "@/components/ui/badge";
 
 export default function RegistryPage() {
-    const persons = useQuery({ queryKey: ["persons"], queryFn: async () => (await api.get("/faces/persons")).data });
+  const persons = useQuery({ queryKey: ["persons"], queryFn: async () => (await api.get("/faces/persons")).data });
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", department: "", title: "", age: "", gender: "", tags: "", notes: "" });
   const [files, setFiles] = useState<FileList | null>(null);
   const [message, setMessage] = useState("");
+  const [quality, setQuality] = useState<any | null>(null);
+  const [duplicateHit, setDuplicateHit] = useState<any | null>(null);
+  const [qualityLoading, setQualityLoading] = useState(false);
+  const [duplicateLoading, setDuplicateLoading] = useState(false);
   
   // Webcam state
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -44,6 +49,34 @@ export default function RegistryPage() {
     }
   };
 
+  const analyzeSample = async (file: Blob) => {
+    setQualityLoading(true);
+    setDuplicateLoading(true);
+    setQuality(null);
+    setDuplicateHit(null);
+    try {
+      const fd1 = new FormData();
+      fd1.append("image", file, "sample.jpg");
+      const res = await api.post("/faces/quality", fd1);
+      setQuality(res.data?.data ?? res.data);
+    } catch (err) {
+      setQuality(null);
+    } finally {
+      setQualityLoading(false);
+    }
+
+    try {
+      const fd2 = new FormData();
+      fd2.append("image", file, "sample.jpg");
+      const res = await api.post("/faces/duplicate-check", fd2);
+      setDuplicateHit(res.data?.data ?? res.data);
+    } catch (err) {
+      setDuplicateHit(null);
+    } finally {
+      setDuplicateLoading(false);
+    }
+  };
+
   const stopCamera = () => {
     const stream = videoRef.current?.srcObject;
     if (stream instanceof MediaStream) {
@@ -69,6 +102,7 @@ export default function RegistryPage() {
       setCapturedImage(blob);
       setCapturedUrl(URL.createObjectURL(blob));
       stopCamera();
+      analyzeSample(blob);
     }, "image/jpeg", 0.95);
   };
 
@@ -76,6 +110,8 @@ export default function RegistryPage() {
     setCapturedImage(null);
     if (capturedUrl) URL.revokeObjectURL(capturedUrl);
     setCapturedUrl(null);
+    setQuality(null);
+    setDuplicateHit(null);
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -120,6 +156,21 @@ export default function RegistryPage() {
     }
   };
 
+  const exportRegistry = async (format: "csv" | "xlsx") => {
+    const mime = format === "csv" ? "text/csv" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const res = await api.get(`/exports/persons.${format}`, { responseType: "blob" });
+    const blob = new Blob([res.data], { type: mime });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `persons_${stamp}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   return (
     <AppShell>
       <div className="grid gap-6 xl:grid-cols-[450px_1fr]">
@@ -160,7 +211,17 @@ export default function RegistryPage() {
                     {isCameraOn ? "Stop Camera" : "📸 Use Camera"}
                   </Button>
                   <div className="flex-1">
-                    <Input type="file" accept="image/*" multiple onChange={(e) => setFiles(e.target.files)} className="cursor-pointer bg-black/20 border-white/10" />
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        setFiles(e.target.files);
+                        const first = e.target.files?.[0];
+                        if (first) analyzeSample(first);
+                      }}
+                      className="cursor-pointer bg-black/20 border-white/10"
+                    />
                   </div>
                 </div>
 
@@ -181,6 +242,57 @@ export default function RegistryPage() {
                     </div>
                   </div>
                 )}
+
+                <div className="grid gap-3">
+                  <div className="rounded-xl border border-primary/20 bg-black/30 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs uppercase tracking-wider text-muted">Face Quality</div>
+                      {qualityLoading && <Badge className="bg-primary/20 text-accent border border-primary/30">Scanning...</Badge>}
+                    </div>
+                    {quality ? (
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="flex flex-col">
+                          <span className="text-muted">Overall</span>
+                          <span className={`font-semibold ${quality.is_valid ? "text-emerald-300" : "text-rose-300"}`}>{Math.round(quality.overall * 100)}%</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-muted">Blur</span>
+                          <span className="font-semibold text-white">{Math.round(quality.blur * 100)}%</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-muted">Brightness</span>
+                          <span className="font-semibold text-white">{Math.round(quality.brightness * 100)}%</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-muted">Size</span>
+                          <span className="font-semibold text-white">{Math.round(quality.size_score * 100)}%</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-muted">Pose</span>
+                          <span className="font-semibold text-white">{Math.round(quality.pose_score * 100)}%</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted">Upload or capture a face to evaluate quality.</div>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-primary/20 bg-black/30 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs uppercase tracking-wider text-muted">Duplicate Check</div>
+                      {duplicateLoading && <Badge className="bg-primary/20 text-accent border border-primary/30">Searching...</Badge>}
+                    </div>
+                    {duplicateHit ? (
+                      <div className="text-xs text-rose-300">
+                        Possible match: <span className="font-semibold text-white">{duplicateHit.full_name}</span> ({duplicateHit.person_code}) · {(duplicateHit.similarity * 100).toFixed(1)}%
+                      </div>
+                    ) : capturedImage || files ? (
+                      <div className="text-xs text-emerald-300">No close duplicates detected.</div>
+                    ) : (
+                      <div className="text-xs text-muted">Upload or capture a face to check duplicates.</div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <Button className="w-full bg-primary hover:bg-primary/90 text-white shadow-glow-violet" type="submit">Register Face</Button>
@@ -194,7 +306,16 @@ export default function RegistryPage() {
         </Card>
 
         <Card className="glass-violet border-primary/20">
-          <CardTitle className="text-white">Face Registry</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-col">
+              <CardTitle className="text-white">Face Registry</CardTitle>
+              <div className="text-xs text-muted">Total people: {persons.data?._meta?.total ?? persons.data?.length ?? 0}</div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="border-primary/20 text-accent" onClick={() => exportRegistry("csv")}>Export CSV</Button>
+              <Button variant="outline" className="border-primary/20 text-accent" onClick={() => exportRegistry("xlsx")}>Export XLSX</Button>
+            </div>
+          </div>
           <CardContent className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-2">
             {(persons.data ?? []).map((person: any) => (
               <FaceCard key={person.id} person={person} onDelete={deletePerson} />

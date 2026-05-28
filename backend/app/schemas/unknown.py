@@ -34,3 +34,13 @@ class RegisterFromUnknownRequest(BaseModel):
     gender: str | None = None
     tags: str | None = None
     notes: str | None = None
+
+class UnknownSimilarityHit(BaseModel):
+    id: int
+    snapshot_path: str
+    timestamp: datetime
+    mood: str | None = None
+    similarity: float
+
+class UnknownSimilarityResponse(BaseModel):
+    items: list[UnknownSimilarityHit]

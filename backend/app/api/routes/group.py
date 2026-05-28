@@ -23,7 +23,8 @@ def analyze_group_photo(
                 face_service.rebuild_index(db)
                 
         service = GroupService(face_service.pipeline)
-        result = service.analyze_group_photo(db, raw_bytes)
+        result = service.analyze_group_photo(db, raw_bytes, source_ref=file.filename)
+        db.commit()
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

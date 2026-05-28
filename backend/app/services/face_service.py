@@ -16,14 +16,17 @@ from app.ai.quality import face_quality, blur_score, low_light_score
 from app.config import load_settings
 from app.models.face import Person, FaceSample, FaceEmbedding
 from app.models.recognition import RecognitionLog
+from app.models.mood import MoodRecord
 from app.repositories.face_repo import FaceRepository
 from app.repositories.recognition_repo import RecognitionRepository
+from app.services.unknown_service import UnknownService
 from app.utils.files import sha256_bytes, unique_filename
 
 class FaceService:
     def __init__(self):
         self.repo = FaceRepository()
         self.rec_repo = RecognitionRepository()
+        self.unknown_service = UnknownService()
         self.settings = load_settings()
         self.embedder = FaceEmbedder()
         self.pipeline = FacePipeline()
@@ -44,14 +47,32 @@ class FaceService:
         return frame
 
     def _store_face_sample(self, db: Session, person: Person, file_path: Path, raw: bytes, frame: np.ndarray) -> FaceSample | None:
-        analysis = self.pipeline.analyze_face(frame)
-        if not analysis:
+        matches, aux, _meta = self.pipeline.analyze_frame(
+            frame,
+            enable_enhancement=self.settings.auto_low_light_enhance,
+            fast_emotion=True,
+            compute_emotion=False,
+            compute_liveness=False,
+            force_enhanced=False
+        )
+        if not matches:
             return None
-        detection = analysis[0]
+        detection = matches[0]
+        if detection.quality_score < self.settings.quality_min_score:
+            return None
+
+        crop_path = None
+        crop_dir = file_path.parent / "crops"
+        crop_dir.mkdir(parents=True, exist_ok=True)
+        crop_name = unique_filename("crop", ".jpg")
+        crop_file = crop_dir / crop_name
+        cv2.imwrite(str(crop_file), aux[0].face_crop)
+        crop_path = str(crop_file.relative_to(self.settings.base_dir))
+
         sample = FaceSample(
             person_id=person.id,
             image_path=str(file_path.relative_to(self.settings.base_dir)),
-            crop_path=None,
+            crop_path=crop_path,
             quality_score=detection.quality_score,
             blur_score=detection.blur_score,
             low_light_score=detection.low_light_score,
@@ -60,7 +81,7 @@ class FaceService:
         )
         db.add(sample)
         db.flush()
-        emb = self.embedder.extract(frame)
+        emb = aux[0].embedding or self.embedder.extract(frame)
         if emb is None:
             return sample
         embedding = FaceEmbedding(
@@ -83,18 +104,73 @@ class FaceService:
             raise HTTPException(status_code=400, detail="Multiple faces detected, please upload an image with only one face")
             
         face_crop = self.pipeline.detector.align(frame, detected_faces[0])
-        report = comprehensive_quality(face_crop, frame.shape)
+        report = comprehensive_quality(face_crop, frame.shape, landmarks=detected_faces[0].landmark)
         return {
             "blur": report.blur,
             "brightness": report.brightness,
             "contrast": report.contrast,
             "size_score": report.size_score,
+            "pose_score": report.pose_score,
             "overall": report.overall,
             "is_valid": report.is_valid
         }
 
+    def duplicate_check(self, db: Session, image_bytes: bytes) -> dict | None:
+        frame = self._load_image(image_bytes)
+        matches, aux, _meta = self.pipeline.analyze_frame(
+            frame,
+            enable_enhancement=self.settings.auto_low_light_enhance,
+            fast_emotion=True,
+            compute_emotion=False,
+            compute_liveness=False,
+            force_enhanced=False
+        )
+        if not matches:
+            raise HTTPException(status_code=400, detail="No face detected in image")
+        emb = aux[0].embedding or self.embedder.extract(frame)
+        if emb is None:
+            raise HTTPException(status_code=400, detail="Failed to extract face embedding")
+        return self._find_duplicate_for_embedding(db, emb)
+
     def create_person(self, db: Session, created_by: int | None, data: dict[str, Any], files: list[UploadFile]) -> Person:
-        person_code = f"PID-{uuid4().hex[:10].upper()}"
+        if not files:
+            raise HTTPException(status_code=400, detail="At least one face image is required")
+
+        person_code = data.get("person_code") or f"PID-{uuid4().hex[:10].upper()}"
+        if self.repo.find_by_code(db, person_code):
+            raise HTTPException(status_code=409, detail="Person code already exists")
+
+        # Duplicate prevention (based on the first valid sample)
+        if self.settings.prevent_duplicate_registration:
+            emb_candidate = None
+            for upload in files:
+                raw = upload.file.read()
+                upload.file.seek(0)
+                frame = self._load_image(raw)
+                matches, aux, _meta = self.pipeline.analyze_frame(
+                    frame,
+                    enable_enhancement=self.settings.auto_low_light_enhance,
+                    fast_emotion=True,
+                    compute_emotion=False,
+                    compute_liveness=False,
+                    force_enhanced=False
+                )
+                if not matches:
+                    continue
+                if matches[0].quality_score < self.settings.quality_min_score:
+                    continue
+                emb_candidate = aux[0].embedding or self.embedder.extract(frame)
+                if emb_candidate is not None:
+                    break
+
+            if emb_candidate is not None:
+                dup = self._find_duplicate_for_embedding(db, emb_candidate)
+                if dup:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Possible duplicate: {dup['full_name']} ({dup['person_code']}) similarity {dup['similarity']:.2f}"
+                    )
+
         person = Person(
             person_code=person_code,
             full_name=data["full_name"],
@@ -112,12 +188,18 @@ class FaceService:
         db.add(person)
         db.flush()
 
-        if not files:
-            raise HTTPException(status_code=400, detail="At least one face image is required")
+        valid_samples = 0
         for upload in files:
             file_path, raw = self._save_upload(upload, self.settings.abs_face_dir / person.person_code)
             frame = self._load_image(raw)
-            self._store_face_sample(db, person, file_path, raw, frame)
+            sample = self._store_face_sample(db, person, file_path, raw, frame)
+            if sample is not None:
+                valid_samples += 1
+
+        if valid_samples == 0:
+            db.rollback()
+            raise HTTPException(status_code=400, detail="All uploaded images failed quality checks")
+
         db.flush()
         self._update_primary_image(person, db)
         self._prevent_duplicates(db, person)
@@ -159,6 +241,34 @@ class FaceService:
         if duplicates:
             person, _sim = sorted(duplicates, key=lambda t: t[1], reverse=True)[0]
             new_person.duplicate_of = person.id
+
+    def _find_duplicate_for_embedding(self, db: Session, emb_res: Any) -> dict[str, Any] | None:
+        if emb_res is None:
+            return None
+        if self.pipeline.index is None:
+            if not self.pipeline.load_index():
+                self.rebuild_index(db)
+        if self.pipeline.index is None or not self.pipeline._meta:
+            return None
+
+        vec = emb_res.embedding.astype(np.float32).reshape(1, -1)
+        vec = self.pipeline._normalize(vec)
+        scores, idxs = self.pipeline.index.search(vec, k=1)
+        if scores.size == 0:
+            return None
+        best_score = float(scores[0][0])
+        if best_score < self.settings.duplicate_similarity_threshold:
+            return None
+        best_idx = int(idxs[0][0])
+        if best_idx < 0 or best_idx >= len(self.pipeline._meta):
+            return None
+        item = self.pipeline._meta[best_idx]
+        return {
+            "person_id": int(item["person_id"]),
+            "person_code": str(item["person_code"]),
+            "full_name": str(item["full_name"]),
+            "similarity": best_score,
+        }
 
     def _person_average_embedding(self, db: Session, person_id: int) -> np.ndarray | None:
         embeddings = db.scalars(select(FaceEmbedding).where(FaceEmbedding.person_id == person_id)).all()
@@ -240,9 +350,16 @@ class FaceService:
             if not self.pipeline.load_index():
                 self.rebuild_index(db)
             
-        matches = self.pipeline.analyze_face(frame)
+        matches, aux, _meta = self.pipeline.analyze_frame(
+            frame,
+            enable_enhancement=self.settings.auto_low_light_enhance,
+            fast_emotion=False,
+            compute_emotion=True,
+            compute_liveness=True,
+            force_enhanced=False
+        )
         results = []
-        for m in matches:
+        for i, m in enumerate(matches):
             log = RecognitionLog(
                 person_id=m.person_id,
                 person_name=m.full_name if not m.is_unknown else None,
@@ -254,8 +371,44 @@ class FaceService:
                 frame_index=frame_index,
                 bounding_box_json=m.bbox,
                 embedding_hash=m.embedding_hash,
+                mood=m.mood,
+                mood_scores_json=m.mood_scores,
+                liveness_score=m.liveness_score,
+                tracking_id=m.tracking_id,
+                is_enhanced=m.is_enhanced,
+                quality_score=m.quality_score,
+                low_light_score=m.low_light_score,
+                pose_score=m.pose_score,
+                size_score=m.size_score,
             )
             db.add(log)
+            if m.is_unknown:
+                emb_res = aux[i].embedding
+                if emb_res is not None:
+                    unknown_log = self.unknown_service.log_unknown_face(
+                        db, aux[i].face_crop, emb_res.embedding, m.embedding_hash,
+                        m.bbox, m.confidence, m.mood, m.mood_scores,
+                        m.liveness_score, source_type, source_ref
+                    )
+                    if m.mood:
+                        db.add(MoodRecord(
+                            person_id=None,
+                            unknown_face_id=unknown_log.id,
+                            mood=m.mood,
+                            mood_scores_json=m.mood_scores,
+                            source_type=source_type,
+                            source_ref=source_ref
+                        ))
+            else:
+                if m.mood:
+                    db.add(MoodRecord(
+                        person_id=m.person_id,
+                        unknown_face_id=None,
+                        mood=m.mood,
+                        mood_scores_json=m.mood_scores,
+                        source_type=source_type,
+                        source_ref=source_ref
+                    ))
             results.append(m)
         db.flush()
         return frame, results
@@ -279,8 +432,15 @@ class FaceService:
             if not ok:
                 break
             if frame_index % skip == 0:
-                matches = self.pipeline.analyze_face(frame)
-                for m in matches:
+                matches, aux, _meta = self.pipeline.analyze_frame(
+                    frame,
+                    enable_enhancement=self.settings.auto_low_light_enhance,
+                    fast_emotion=True,
+                    compute_emotion=True,
+                    compute_liveness=True,
+                    force_enhanced=False
+                )
+                for i, m in enumerate(matches):
                     log = RecognitionLog(
                         person_id=m.person_id,
                         person_name=m.full_name if not m.is_unknown else None,
@@ -292,8 +452,44 @@ class FaceService:
                         frame_index=frame_index,
                         bounding_box_json=m.bbox,
                         embedding_hash=m.embedding_hash,
+                        mood=m.mood,
+                        mood_scores_json=m.mood_scores,
+                        liveness_score=m.liveness_score,
+                        tracking_id=m.tracking_id,
+                        is_enhanced=m.is_enhanced,
+                        quality_score=m.quality_score,
+                        low_light_score=m.low_light_score,
+                        pose_score=m.pose_score,
+                        size_score=m.size_score,
                     )
                     db.add(log)
+                    if m.is_unknown:
+                        emb_res = aux[i].embedding
+                        if emb_res is not None:
+                            unknown_log = self.unknown_service.log_unknown_face(
+                                db, aux[i].face_crop, emb_res.embedding, m.embedding_hash,
+                                m.bbox, m.confidence, m.mood, m.mood_scores,
+                                m.liveness_score, "video", source_ref or str(file_path)
+                            )
+                            if m.mood:
+                                db.add(MoodRecord(
+                                    person_id=None,
+                                    unknown_face_id=unknown_log.id,
+                                    mood=m.mood,
+                                    mood_scores_json=m.mood_scores,
+                                    source_type="video",
+                                    source_ref=source_ref or str(file_path)
+                                ))
+                    else:
+                        if m.mood:
+                            db.add(MoodRecord(
+                                person_id=m.person_id,
+                                unknown_face_id=None,
+                                mood=m.mood,
+                                mood_scores_json=m.mood_scores,
+                                source_type="video",
+                                source_ref=source_ref or str(file_path)
+                            ))
                     collected.append(m)
             frame_index += 1
         cap.release()

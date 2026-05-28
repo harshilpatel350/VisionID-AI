@@ -6,7 +6,7 @@
   "port": 8000,
   "secret_key": "visionid-ai-local-secret-key-change-me",
   "access_token_expire_minutes": 1440,
-  "database_url": "mysql+pymysql://root:root@127.0.0.1:3306/visionid_ai?charset=utf8mb4",
+  "database_url": "sqlite:///storage/visionid.db",
   "cors_origins": [
     "http://localhost:3000",
     "http://127.0.0.1:3000"
@@ -18,10 +18,27 @@
   "face_dir": "storage/faces",
   "report_dir": "storage/reports",
   "log_dir": "storage/logs",
+  "unknown_face_dir": "storage/unknowns",
   "recognition_cooldown_seconds": 30,
   "recognition_threshold": 0.45,
   "duplicate_similarity_threshold": 0.92,
   "quality_min_score": 0.35,
   "frame_skip": 3,
-  "max_batch_frames": 25
+  "max_batch_frames": 25,
+  "low_light_threshold": 60,
+  "enhancement_gamma": 1.2,
+  "enhancement_clip_limit": 2.0,
+  "auto_low_light_enhance": true,
+  "liveness_enabled": true,
+  "liveness_threshold": 0.5,
+  "liveness_mode": "enhanced",
+  "liveness_motion_weight": 0.3,
+  "emotion_enabled": true,
+  "emotion_backend": "auto",
+  "emotion_fast_in_live": true,
+  "save_recognition_snapshots": false,
+  "recognition_snapshot_dir": "storage/snapshots/recognitions",
+  "save_unknown_snapshots": true,
+  "unknown_similarity_threshold": 0.85,
+  "unknown_similarity_top_k": 8
 }

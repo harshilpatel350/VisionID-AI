@@ -1,8 +1,9 @@
 from __future__ import annotations
 import logging
+from datetime import datetime
 import uuid
 import traceback
-from fastapi import APIRouter, Depends, File, UploadFile, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Depends, File, UploadFile, WebSocket, WebSocketDisconnect, Query, HTTPException
 from sqlalchemy.orm import Session
 from fastapi.concurrency import run_in_threadpool
 
@@ -46,14 +47,37 @@ def recognize_video(video: UploadFile = File(...), db: Session = Depends(get_db)
 def logs(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    mood: str | None = Query(None),
+    is_unknown: bool | None = Query(None),
+    person_name: str | None = Query(None),
+    sort: str | None = Query("desc"),
     db: Session = Depends(get_db), 
     user=Depends(require_roles("admin", "operator", "viewer"))
 ):
     offset, limit = validate_pagination(page, page_size, max_page_size=500)
-    # Note: repo.recent_logs needs pagination support, I'll update it later or just slice here for now.
-    # To be precise, I should update the repo. Let's slice for now to match interface, we'll fix repo in Phase 5.
-    items = repo.recent_logs(db, limit=limit, offset=offset)
-    total = repo.count_total_logs(db)
+    start_dt = None
+    end_dt = None
+    try:
+        if start:
+            start_dt = datetime.fromisoformat(start)
+        if end:
+            end_dt = datetime.fromisoformat(end)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use ISO 8601.")
+
+    items, total = repo.filtered_logs(
+        db,
+        start=start_dt,
+        end=end_dt,
+        mood=mood,
+        is_unknown=is_unknown,
+        person_name=person_name,
+        sort=sort,
+        limit=limit,
+        offset=offset
+    )
     
     data = [{
         "id": i.id,
@@ -67,6 +91,16 @@ def logs(
         "frame_index": i.frame_index,
         "bounding_box_json": i.bounding_box_json,
         "embedding_hash": i.embedding_hash,
+        "mood": i.mood,
+        "mood_scores_json": i.mood_scores_json,
+        "liveness_score": i.liveness_score,
+        "tracking_id": i.tracking_id,
+        "is_enhanced": i.is_enhanced,
+        "snapshot_path": i.snapshot_path,
+        "quality_score": i.quality_score,
+        "low_light_score": i.low_light_score,
+        "pose_score": i.pose_score,
+        "size_score": i.size_score,
         "occurred_at": i.occurred_at.isoformat() if i.occurred_at else None,
     } for i in items]
     
@@ -79,10 +113,10 @@ def logs(
     return PaginatedResponse(data=data, meta=meta)
 
 
-def _process_frame_sync(payload: str, host: str):
+def _process_frame_sync(payload: str, host: str, enable_enhancement: bool):
     db = SessionLocal()
     try:
-        res = svc.process_webcam_frame(db, payload, session_id=host)
+        res = svc.process_webcam_frame(db, payload, session_id=host, enable_enhancement=enable_enhancement)
         db.commit()
         return res
     except Exception:
@@ -109,6 +143,7 @@ async def webcam_socket(websocket: WebSocket):
 
     await websocket.accept()
     session_id = str(uuid.uuid4())
+    enhance_flag = websocket.query_params.get("enhance", "false").lower() == "true"
     logger.info("Client connected to Live AI: %s", session_id)
     
     try:
@@ -118,12 +153,13 @@ async def webcam_socket(websocket: WebSocket):
                 if not payload:
                     continue
                 
-                _annotated, matches, jpeg_b64 = await run_in_threadpool(_process_frame_sync, payload, session_id)
+                _annotated, matches, jpeg_b64, meta = await run_in_threadpool(_process_frame_sync, payload, session_id, enhance_flag)
                 
                 await websocket.send_json({
                     "type": "frame",
                     "image": jpeg_b64,
                     "logs": [m.__dict__ for m in matches],
+                    "meta": meta,
                 })
             except WebSocketDisconnect:
                 raise
@@ -140,4 +176,8 @@ async def webcam_socket(websocket: WebSocket):
     except Exception as e:
         logger.error("WebSocket session error for %s: %s", session_id, e)
     finally:
-        svc.cleanup_session(session_id)
+        db = SessionLocal()
+        try:
+            svc.cleanup_session(session_id, db)
+        finally:
+            db.close()

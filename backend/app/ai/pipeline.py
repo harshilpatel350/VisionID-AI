@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -9,9 +9,9 @@ import cv2
 import faiss
 import numpy as np
 
-from app.ai.detector import FaceDetector
-from app.ai.embedder import FaceEmbedder
-from app.ai.quality import face_quality, blur_score, low_light_score
+from app.ai.detector import FaceDetector, DetectedFace
+from app.ai.embedder import FaceEmbedder, EmbeddingResult
+from app.ai.quality import comprehensive_quality, QualityReport
 from app.ai.emotion import EmotionDetector
 from app.ai.liveness import LivenessDetector
 from app.ai.enhancement import LowLightEnhancer
@@ -31,6 +31,9 @@ class RecognitionMatch:
     quality_score: float
     blur_score: float
     low_light_score: float
+    size_score: float = 0.0
+    pose_score: float = 1.0
+    is_low_light: bool = False
     embedding_hash: str | None = None
     department: str | None = None
     title: str | None = None
@@ -43,14 +46,25 @@ class RecognitionMatch:
     tracking_id: int | None = None
     is_enhanced: bool = False
 
+@dataclass
+class FrameFace:
+    face: DetectedFace
+    face_crop: np.ndarray
+    embedding: EmbeddingResult | None
+    quality: QualityReport
+
 class FacePipeline:
     def __init__(self):
         self.settings = load_settings()
         self.detector = FaceDetector()
         self.embedder = FaceEmbedder()
         self.emotion_detector = EmotionDetector()
-        self.liveness_detector = LivenessDetector(threshold=0.5)
-        self.enhancer = LowLightEnhancer()
+        self.liveness_detector = LivenessDetector(threshold=self.settings.liveness_threshold)
+        self.enhancer = LowLightEnhancer(
+            threshold=self.settings.low_light_threshold,
+            gamma=self.settings.enhancement_gamma,
+            clip_limit=self.settings.enhancement_clip_limit
+        )
         self.index = None
         self._vectors: np.ndarray | None = None
         self._meta: list[dict[str, Any]] = []
@@ -133,20 +147,41 @@ class FacePipeline:
         norms = np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-6
         return vectors / norms
 
-    def analyze_face(self, image_bgr: np.ndarray, is_enhanced: bool = False) -> list[RecognitionMatch]:
-        detected_faces = self.detector.detect(image_bgr)
+    def analyze_frame(
+        self,
+        image_bgr: np.ndarray,
+        enable_enhancement: bool = False,
+        fast_emotion: bool = False,
+        compute_emotion: bool = True,
+        compute_liveness: bool = True,
+        force_enhanced: bool = False
+    ) -> tuple[list[RecognitionMatch], list[FrameFace], dict[str, Any]]:
+        is_low_light = self.enhancer.is_low_light(image_bgr)
+        frame = image_bgr
+        is_enhanced = force_enhanced
+        if enable_enhancement and is_low_light:
+            frame = self.enhancer.enhance(image_bgr)
+            is_enhanced = True
+
+        detected_faces = self.detector.detect(frame)
         results: list[RecognitionMatch] = []
+        aux: list[FrameFace] = []
+
         for face in detected_faces:
-            face_crop = self.detector.align(image_bgr, face)
-            
-            # Embed
-            emb_res = self.embedder.extract(image_bgr, face)
+            face_crop = self.detector.align(frame, face)
+            quality = comprehensive_quality(
+                face_crop,
+                frame.shape,
+                min_score=self.settings.quality_min_score,
+                landmarks=face.landmark
+            )
+
+            emb_res = self.embedder.extract(frame, face)
             if emb_res is None:
                 continue
 
             match_data = self._match_and_find(emb_res)
 
-            # Mirror fallback
             if match_data["is_unknown"]:
                 flipped = cv2.flip(face_crop, 1)
                 emb_flipped = self.embedder.extract(flipped)
@@ -154,12 +189,16 @@ class FacePipeline:
                     match_flipped = self._match_and_find(emb_flipped)
                     if not match_flipped["is_unknown"]:
                         match_data = match_flipped
-                        
-            # Analyze Emotion
-            mood, mood_scores = self.emotion_detector.detect(face_crop)
-            
-            # Analyze Liveness
-            liveness_result = self.liveness_detector.score(face_crop)
+
+            if compute_emotion and self.settings.emotion_enabled:
+                mood, mood_scores = self.emotion_detector.detect(face_crop, fast=fast_emotion)
+            else:
+                mood, mood_scores = None, None
+
+            if compute_liveness and self.settings.liveness_enabled:
+                liveness_result = self.liveness_detector.score(face_crop)
+            else:
+                liveness_result = {"liveness_score": None, "is_suspicious": False}
 
             results.append(
                 RecognitionMatch(
@@ -170,9 +209,12 @@ class FacePipeline:
                     distance=match_data["distance"],
                     is_unknown=match_data["is_unknown"],
                     bbox={"x1": int(face.bbox[0]), "y1": int(face.bbox[1]), "x2": int(face.bbox[2]), "y2": int(face.bbox[3])},
-                    quality_score=float(face_quality(face_crop)),
-                    blur_score=float(blur_score(image_bgr)),
-                    low_light_score=float(low_light_score(image_bgr)),
+                    quality_score=float(quality.overall),
+                    blur_score=float(quality.blur),
+                    low_light_score=float(1.0 - quality.brightness),
+                    size_score=float(quality.size_score),
+                    pose_score=float(quality.pose_score),
+                    is_low_light=is_low_light,
                     embedding_hash=match_data["embedding_hash"],
                     department=match_data["department"] if not match_data["is_unknown"] else None,
                     title=match_data["title"] if not match_data["is_unknown"] else None,
@@ -180,19 +222,57 @@ class FacePipeline:
                     phone=match_data["phone"] if not match_data["is_unknown"] else None,
                     mood=mood,
                     mood_scores=mood_scores,
-                    liveness_score=liveness_result["liveness_score"],
-                    liveness_suspicious=liveness_result["is_suspicious"],
+                    liveness_score=liveness_result.get("liveness_score"),
+                    liveness_suspicious=liveness_result.get("is_suspicious", False),
                     is_enhanced=is_enhanced,
                 )
             )
-        return results
+            aux.append(FrameFace(face=face, face_crop=face_crop, embedding=emb_res, quality=quality))
 
-    def analyze_face_enhanced(self, image_bgr: np.ndarray) -> list[RecognitionMatch]:
+        meta = {"is_low_light": is_low_light, "is_enhanced": is_enhanced}
+        return results, aux, meta
+
+    def analyze_face(self, image_bgr: np.ndarray, is_enhanced: bool = False, fast_emotion: bool = False) -> list[RecognitionMatch]:
+        matches, _aux, _meta = self.analyze_frame(
+            image_bgr,
+            enable_enhancement=False,
+            fast_emotion=fast_emotion,
+            compute_emotion=True,
+            compute_liveness=True,
+            force_enhanced=is_enhanced
+        )
+        return matches
+
+    def analyze_face_enhanced(self, image_bgr: np.ndarray, fast_emotion: bool = False) -> list[RecognitionMatch]:
         """Auto-enhances if low light is detected, then analyzes."""
-        if self.enhancer.is_low_light(image_bgr):
-            enhanced = self.enhancer.enhance(image_bgr)
-            return self.analyze_face(enhanced, is_enhanced=True)
-        return self.analyze_face(image_bgr, is_enhanced=False)
+        matches, _aux, _meta = self.analyze_frame(
+            image_bgr,
+            enable_enhancement=True,
+            fast_emotion=fast_emotion,
+            compute_emotion=True,
+            compute_liveness=True,
+            force_enhanced=False
+        )
+        return matches
+
+    def draw(self, image_bgr: np.ndarray, matches: list[RecognitionMatch]) -> np.ndarray:
+        canvas = image_bgr.copy()
+        for m in matches:
+            x1, y1, x2, y2 = m.bbox["x1"], m.bbox["y1"], m.bbox["x2"], m.bbox["y2"]
+            color = (70, 80, 255) if m.is_unknown else (180, 165, 245)
+            cv2.rectangle(canvas, (x1, y1), (x2, y2), color, 2)
+
+            label = f"{m.full_name if not m.is_unknown else 'Unknown'} {m.confidence * 100:.1f}%"
+            if m.mood:
+                label += f" | {m.mood}"
+            if m.tracking_id is not None:
+                label += f" | ID {m.tracking_id}"
+
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            cv2.rectangle(canvas, (x1, max(0, y1 - th - 8)), (x1 + tw + 6, y1), color, -1)
+            cv2.putText(canvas, label, (x1 + 3, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (10, 10, 10), 1, cv2.LINE_AA)
+
+        return canvas
 
     def _match_and_find(self, emb_res: Any) -> dict[str, Any]:
         res = {

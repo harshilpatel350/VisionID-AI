@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
 from app.services.unknown_service import UnknownService
-from app.schemas.unknown import UnknownFaceListResponse, RegisterFromUnknownRequest
+from app.schemas.unknown import UnknownFaceListResponse, RegisterFromUnknownRequest, UnknownSimilarityResponse
 from app.services.face_service import FaceService
 
 router = APIRouter(prefix="/unknowns", tags=["Unknown Faces"])
@@ -87,3 +87,14 @@ def register_unknown_as_person(
     service.repo.update(db, log)
     
     return person
+
+@router.get("/{log_id}/similar", response_model=UnknownSimilarityResponse)
+def similar_unknowns(
+    log_id: int,
+    top_k: int | None = Query(None, ge=1, le=50),
+    min_similarity: float | None = Query(None, ge=0.0, le=1.0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    items = service.find_similar(db, log_id, top_k=top_k, min_similarity=min_similarity)
+    return {"items": items}

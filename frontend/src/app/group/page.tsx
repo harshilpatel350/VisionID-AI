@@ -121,6 +121,12 @@ export default function GroupPage() {
                       <Users size={12} /> Total Faces
                     </span>
                   </div>
+                  <div className="bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20 flex flex-col">
+                    <span className="text-3xl font-bold text-emerald-400">{result.summary.known_faces}</span>
+                    <span className="text-xs text-emerald-400/80 font-medium uppercase mt-1 flex items-center gap-1">
+                      <Users size={12} /> Known Faces
+                    </span>
+                  </div>
                   <div className="bg-orange-500/10 p-3 rounded-lg border border-orange-500/20 flex flex-col">
                     <span className="text-3xl font-bold text-orange-500">{result.summary.unknown_faces}</span>
                     <span className="text-xs text-orange-500/80 font-medium uppercase mt-1 flex items-center gap-1">

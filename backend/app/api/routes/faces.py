@@ -41,10 +41,14 @@ def list_persons(
 @router.post("/persons", response_model=ResponseEnvelope[PersonOut], status_code=status.HTTP_201_CREATED)
 def create_person(
     full_name: str = Form(...),
+    person_code: str | None = Form(None),
     email: str | None = Form(None),
     phone: str | None = Form(None),
     department: str | None = Form(None),
     title: str | None = Form(None),
+    age: int | None = Form(None),
+    gender: str | None = Form(None),
+    tags: str | None = Form(None),
     notes: str | None = Form(None),
     images: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
@@ -56,7 +60,18 @@ def create_person(
     person = svc.create_person(
         db,
         created_by=user.id,
-        data={"full_name": full_name, "email": email, "phone": phone, "department": department, "title": title, "notes": notes},
+        data={
+            "full_name": full_name,
+            "person_code": person_code,
+            "email": email,
+            "phone": phone,
+            "department": department,
+            "title": title,
+            "age": age,
+            "gender": gender,
+            "tags": tags,
+            "notes": notes
+        },
         files=images,
     )
     
@@ -72,6 +87,18 @@ def create_person(
     db.commit()
     db.refresh(person)
     return ResponseEnvelope(data=svc._serialize_person(db, person))
+
+@router.post("/quality", response_model=ResponseEnvelope[dict[str, Any]])
+def quality_check(image: UploadFile = File(...), db: Session = Depends(get_db), _user=Depends(require_roles("admin", "operator", "viewer"))):
+    raw = validate_image_upload(image)
+    report = svc.quality_check(raw)
+    return ResponseEnvelope(data=report)
+
+@router.post("/duplicate-check", response_model=ResponseEnvelope[dict[str, Any] | None])
+def duplicate_check(image: UploadFile = File(...), db: Session = Depends(get_db), _user=Depends(require_roles("admin", "operator", "viewer"))):
+    raw = validate_image_upload(image)
+    dup = svc.duplicate_check(db, raw)
+    return ResponseEnvelope(data=dup)
 
 @router.get("/persons/{person_id}", response_model=ResponseEnvelope[PersonOut])
 def get_person(person_id: int, db: Session = Depends(get_db), _user=Depends(require_roles("admin", "operator", "viewer"))):

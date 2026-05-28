@@ -32,6 +32,7 @@ export default function MoodAnalyticsPage() {
     neutral: { icon: Meh, color: "text-gray-500", bg: "bg-gray-500/10" },
     fear: { icon: Frown, color: "text-purple-500", bg: "bg-purple-500/10" },
     disgust: { icon: AlertCircle, color: "text-orange-500", bg: "bg-orange-500/10" },
+    confused: { icon: HelpCircle, color: "text-amber-500", bg: "bg-amber-500/10" },
   };
 
   return (

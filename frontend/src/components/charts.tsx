@@ -12,6 +12,12 @@ const TooltipStyle = {
   cursor: { fill: "rgba(138,99,242,0.08)" },
 };
 
+const hourLabel = (value: string) => {
+  if (!value) return "";
+  const parts = value.split(" ");
+  return parts.length > 1 ? parts[1] : value;
+};
+
 export function ActivityChart({ data }: { data: any[] }) {
   return (
     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }}>
@@ -68,6 +74,49 @@ export function SourceChart({ data }: { data: any[] }) {
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie data={data} dataKey="count" nameKey="source" innerRadius={65} outerRadius={95} paddingAngle={3} strokeWidth={0}>
+                {data.map((_entry, index) => (
+                  <Cell key={index} fill={VIOLET_COLORS[index % VIOLET_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip {...TooltipStyle} />
+            </PieChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
+export function FacesPerHourChart({ data }: { data: any[] }) {
+  return (
+    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4, delay: 0.15 }}>
+      <Card className="glass-violet border-primary/20">
+        <CardTitle className="text-white">Faces per Hour</CardTitle>
+        <CardContent className="mt-4 h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(138,99,242,0.12)" />
+              <XAxis dataKey="hour" stroke="#9c8ec4" fontSize={12} tickLine={false} axisLine={false} tickFormatter={hourLabel} />
+              <YAxis stroke="#9c8ec4" fontSize={12} tickLine={false} axisLine={false} />
+              <Tooltip {...TooltipStyle} />
+              <Bar dataKey="count" radius={[10,10,0,0]} fill="#b4a5f5" opacity={0.85} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
+export function MoodDistributionChart({ data }: { data: any[] }) {
+  return (
+    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4, delay: 0.25 }}>
+      <Card className="glass-violet border-primary/20">
+        <CardTitle className="text-white">Mood Breakdown</CardTitle>
+        <CardContent className="mt-4 h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={data} dataKey="count" nameKey="mood" innerRadius={55} outerRadius={90} paddingAngle={3} strokeWidth={0}>
                 {data.map((_entry, index) => (
                   <Cell key={index} fill={VIOLET_COLORS[index % VIOLET_COLORS.length]} />
                 ))}

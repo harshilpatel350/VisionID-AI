@@ -27,7 +27,16 @@ api.interceptors.response.use(
     // If the response is wrapped in a ResponseEnvelope, unwrap it
     if (res.data && typeof res.data === "object" && "success" in res.data) {
       if (res.data.success) {
-        res.data = res.data.data;
+        const payload = res.data;
+        let data = payload.data;
+        if (payload.meta) {
+          if (data && typeof data === "object") {
+            (data as any)._meta = payload.meta;
+          } else {
+            data = { value: data, _meta: payload.meta };
+          }
+        }
+        res.data = data;
       }
     }
     return res;

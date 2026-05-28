@@ -7,10 +7,39 @@ from app.models.recognition import RecognitionLog
 from app.models.face import Person, FaceSample
 from app.models.user import User
 from app.repositories.recognition_repo import RecognitionRepository
+from app.repositories.mood_repo import MoodRepository
 
 class AnalyticsService:
     def __init__(self):
         self.repo = RecognitionRepository()
+        self.mood_repo = MoodRepository()
+
+    def faces_per_hour(self, db: Session, hours: int = 24) -> list[dict[str, int | str]]:
+        now = datetime.now(timezone.utc)
+        end = now.replace(minute=0, second=0, microsecond=0)
+        start = end - timedelta(hours=hours - 1)
+
+        rows = db.scalars(
+            select(RecognitionLog.occurred_at)
+            .where(RecognitionLog.occurred_at >= start)
+        ).all()
+
+        buckets: dict[str, int] = {}
+        for ts in rows:
+            if ts is None:
+                continue
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            bucket = ts.replace(minute=0, second=0, microsecond=0)
+            key = bucket.strftime("%Y-%m-%d %H:00")
+            buckets[key] = buckets.get(key, 0) + 1
+
+        result = []
+        for i in range(hours):
+            hour = start + timedelta(hours=i)
+            key = hour.strftime("%Y-%m-%d %H:00")
+            result.append({"hour": key, "count": int(buckets.get(key, 0))})
+        return result
 
     def dashboard_stats(self, db: Session) -> dict:
         total_persons = db.scalar(select(func.count(Person.id))) or 0
@@ -64,9 +93,15 @@ class AnalyticsService:
             .order_by(func.date(RecognitionLog.occurred_at))
         ).all()
         unknown_trend = [{"day": str(day), "count": int(count)} for day, count in unk]
+        mood_distribution = self.mood_repo.get_mood_stats(db)
+        top_persons = [{"name": name, "hits": int(hits)} for name, hits in self.repo.top_persons(db, limit=8)]
+        faces_per_hour = self.faces_per_hour(db, hours=24)
         return {
             "logs_by_day": logs_by_day,
             "confidence_buckets": conf,
             "source_breakdown": source_breakdown,
             "unknown_trend": unknown_trend,
+            "faces_per_hour": faces_per_hour,
+            "mood_distribution": mood_distribution,
+            "top_persons": top_persons,
         }

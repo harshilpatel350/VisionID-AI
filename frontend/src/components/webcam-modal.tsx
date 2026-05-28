@@ -74,7 +74,8 @@ function drawPremiumBoundingBox(ctx: CanvasRenderingContext2D, m: RecognitionLog
   // Label
   const fontSize = Math.max(12, Math.floor(w * 0.08));
   ctx.font = `600 ${fontSize}px sans-serif`;
-  const text = `${m.is_unknown ? "Unknown" : m.full_name} ${(m.confidence * 100).toFixed(1)}%`;
+  const mood = m.mood ? ` · ${m.mood}` : "";
+  const text = `${m.is_unknown ? "Unknown" : m.full_name} ${(m.confidence * 100).toFixed(1)}%${mood}`;
   const textWidth = ctx.measureText(text).width;
   const textHeight = fontSize;
   
@@ -136,6 +137,8 @@ export function WebcamModal() {
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [enableEnhancement, setEnableEnhancement] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+  const [lowLightActive, setLowLightActive] = useState(false);
+  const [enhancementActive, setEnhancementActive] = useState(false);
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
@@ -174,6 +177,8 @@ export function WebcamModal() {
     setStatus("Idle");
     setLogs([]);
     setShowAnnotated(false);
+    setLowLightActive(false);
+    setEnhancementActive(false);
   };
 
   const startLiveAI = () => {
@@ -200,6 +205,10 @@ export function WebcamModal() {
         const msg = JSON.parse(ev.data);
         if (msg.type === "frame" && Array.isArray(msg.logs)) {
           setLogs(msg.logs);
+          if (msg.meta) {
+            setLowLightActive(Boolean(msg.meta.is_low_light));
+            setEnhancementActive(Boolean(msg.meta.is_enhanced));
+          }
           const known = msg.logs.filter((l: RecognitionLog) => !l.is_unknown);
           const unknown = msg.logs.filter((l: RecognitionLog) => l.is_unknown);
           setStatus(
@@ -337,6 +346,9 @@ export function WebcamModal() {
     }, "image/jpeg", 0.95);
   };
 
+  const knownCount = logs.filter((l) => !l.is_unknown).length;
+  const unknownCount = logs.filter((l) => l.is_unknown).length;
+
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
@@ -378,6 +390,18 @@ export function WebcamModal() {
               <div className="flex items-center justify-between mt-2">
                 <p className="text-xs text-muted font-mono">{status}</p>
               </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {lowLightActive && (
+                  <span className="rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 text-xs">
+                    Low Light Detected
+                  </span>
+                )}
+                {enhancementActive && (
+                  <span className="rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 text-xs">
+                    Enhancement Active
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Recognition results */}
@@ -385,6 +409,11 @@ export function WebcamModal() {
               <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center justify-between">
                 <span>Active Detections</span>
                 <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full">{logs.length}</span>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs mb-3">
+                <span className="rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.5">Known: {knownCount}</span>
+                <span className="rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 px-2 py-0.5">Unknown: {unknownCount}</span>
+                <span className="rounded-full bg-primary/15 text-accent border border-primary/30 px-2 py-0.5">Total: {logs.length}</span>
               </div>
               {logs.length > 0 ? (
                 <div className="space-y-3">
