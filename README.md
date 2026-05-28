@@ -72,6 +72,22 @@ The system seeds an administrator account upon initial database initialization:
 
 ---
 
+## Configuration Tips
+
+- **Emotion engine:** Configure in `backend/config/settings.json`.
+  - `emotion_backend`: `auto` (default), `deepface`, or `fer`.
+  - `emotion_fast_in_live`: `true` for lower latency, `false` for higher accuracy.
+- **Alembic stamp (first run):** If you see `table already exists` during `alembic upgrade head`, your tables were auto-created. Run a one-time stamp:
+
+```bash
+# From repo root
+# Windows (PowerShell)
+$env:PYTHONPATH="backend"; backend\venv\Scripts\alembic.exe -c backend\alembic.ini stamp head
+
+# macOS/Linux
+PYTHONPATH=backend alembic -c backend/alembic.ini stamp head
+```
+
 ## Notes & Architecture Decisions
 
 - **No FFmpeg dependency:** The video processing pipeline runs natively on top of OpenCV decode-streams to simplify installation.

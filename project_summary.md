@@ -71,3 +71,4 @@ Here are templates you can customize and add directly under your "Experience" or
 *   **Role-Based Access Control:** Secured backend API routes with **JWT authentication** and implemented custom role-based access controls (RBAC) to enforce secure administration of user records.
 *   **Premium Futuristic Theme:** Designed a dark-mode **Violet & Lavender** theme incorporating glassmorphism layouts (`glass-violet` panels with tailwind blending) and customized SVG neon glowing accents for an elite, premium UX.
 *   **Analytics & Exports:** Built a filterable recognition timeline with downloadable CSV/XLSX reports for key operational datasets.
+*   **Webcam Overlay Stability:** Implemented aspect-ratio aligned canvas overlays and modal layering to keep labels and bounding boxes aligned on live video.
